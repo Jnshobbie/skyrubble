@@ -19,7 +19,7 @@ const comp = makeComposer(renderer, scene, cam, isTouch);
 function resize() { renderer.setSize(innerWidth, innerHeight); comp.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
-const lvl = new Level(scene, [[0, 0, 20, 2], [24, 0, 14, 2], [42, 0, 12, 2], [58, 0, 40, 2], [8, 5, 4, 1], [16, 8, 4, 1], [27, 5, 5, 1], [34, 8, 4, 1], [44, 5, 5, 1], [50, 8, 3, 1], [31, 2, 2, 4], [62, 2, 1, 3]]);
+const lvl = new Level(scene, [[0, 0, 20, 2], [24, 0, 14, 2], [42, 0, 12, 2], [58, 0, 40, 2], [8, 5, 4, 1], [16, 8, 4, 1], [27, 5, 5, 1], [34, 8, 4, 1], [44, 5, 5, 1], [50, 8, 3, 1], [31, 2, 2, 4], [62, 2, 1, 3] , [10, 2, 2, 2], [19, 2, 1, 3], [46, 2, 2, 2], [52, 2, 1, 3], [66, 2, 3, 2], [72, 2, 1, 4]]);
 const player = new Player(scene), bul = new Bullets(scene), hz = new Hazards(scene);
 const drones = [[12, 4], [18, 6.5], [29, 4], [36, 6], [46, 4], [52, 6.5]].map(([x, y]) => new Drone(scene, x, y));
 const dragons = LEVEL >= 2 ? [[22, 9], [40, 10], [56, 9]].map(([x, y]) => new Dragon(scene, x, y)) : [];

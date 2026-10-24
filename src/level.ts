@@ -1,93 +1,78 @@
 import * as THREE from 'three';
-// Palette: swap these to re-theme blocks/trees (blocks are terracotta, not gray).
-export const PAL = { grass: 0x8fe04a, block: 0xc4703f, leafA: 0x4fc23a, leafB: 0xd63ea8, trunk: 0x5a3b2a, sky: 0x8fd8ee };
+// Art lives in public/art/*.png (sliced from the AI sprite sheet). Collision stays on the invisible tile grid.
+export const PAL = { grass: 0x4f9a2a, block: 0x55555b, trunk: 0x4a3a30, sky: 0x8fd8ee };
 const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+const loader = new THREE.TextureLoader();
+const tex = (n: string) => { const t = loader.load(`art/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+const sprite = (n: string) => new THREE.MeshBasicMaterial({ map: tex(n), alphaTest: 0.5, color: 0xe8e8e8 });
+const V = 5, vary = (x: number, y: number) => (x * 7 + y * 13 + ((x * y) & 3)) % V;
 type Deb = { m: THREE.Mesh; v: THREE.Vector3; life: number };
+type Part = { m: THREE.InstancedMesh; i: number };
 export class Level {
-  tiles = new Set<string>(); idx = new Map<string, number>();
-  body: THREE.InstancedMesh; cap: THREE.InstancedMesh; deb: Deb[] = [];
+  tiles = new Set<string>(); parts = new Map<string, Part[]>(); deb: Deb[] = [];
+  body: THREE.InstancedMesh; cap: THREE.InstancedMesh;
   constructor(public scene: THREE.Scene, rects: number[][]) {
     for (const [x, y, w, h] of rects) for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) this.tiles.add(`${x + i},${y + j}`);
-    const n = this.tiles.size;
-    const bm = new THREE.MeshStandardMaterial({ color: PAL.block, roughness: 0.85, flatShading: true });
-    const cm = new THREE.MeshStandardMaterial({ color: PAL.grass, roughness: 0.9 });
-    this.body = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 2), bm, n);
-    this.cap = new THREE.InstancedMesh(new THREE.BoxGeometry(1.04, 0.2, 2.06), cm, n);
-    for (const m of [this.body, this.cap]) { m.castShadow = m.receiveShadow = true; scene.add(m); }
-    const M = new THREE.Matrix4(); const zero = new THREE.Matrix4().makeScale(0, 0, 0); let k = 0;
-    for (const key of this.tiles) {
-      const [x, y] = key.split(',').map(Number);
-      this.idx.set(key, k);
-      this.body.setMatrixAt(k, M.makeTranslation(x + 0.5, y + 0.5, 0));
-      this.cap.setMatrixAt(k, this.tiles.has(`${x},${y + 1}`) ? zero : M.makeTranslation(x + 0.5, y + 0.92, 0));
-      k++;
-    }
-    this.decorate();
+    const all = [...this.tiles].map(k => k.split(',').map(Number)), top = ([x, y]: number[]) => !this.tiles.has(`${x},${y + 1}`), bottom = ([x, y]: number[]) => !this.tiles.has(`${x},${y - 1}`);
+    const M = new THREE.Matrix4(), add = (k: string, p: Part) => (this.parts.get(k) ?? this.parts.set(k, []).get(k)!).push(p);
+    const bm = new THREE.MeshStandardMaterial({ color: PAL.block, roughness: 0.95, flatShading: true });
+    this.body = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 2), bm, all.length);
+    const tops = all.filter(top); this.cap = new THREE.InstancedMesh(new THREE.BoxGeometry(1.0, 0.16, 2.0), new THREE.MeshStandardMaterial({ color: PAL.grass, roughness: 1 }), tops.length);
+    all.forEach(([x, y], k) => { this.body.setMatrixAt(k, M.makeTranslation(x + 0.5, y + 0.5, 0)); add(`${x},${y}`, { m: this.body, i: k }); });
+    tops.forEach(([x, y], k) => { this.cap.setMatrixAt(k, M.makeTranslation(x + 0.5, y + 0.96, 0)); add(`${x},${y}`, { m: this.cap, i: k }); });
+    this.body.castShadow = this.body.receiveShadow = true; scene.add(this.body, this.cap);
+    // stone faces (5 variants) on every tile front; grass fringe (5 variants) on every top tile
+    const stoneMats = Array.from({ length: V }, (_, i) => new THREE.MeshBasicMaterial({ map: tex(`stone${i}`), color: 0xd8d8d8 }));
+    const grassMats = Array.from({ length: V }, (_, i) => sprite(`grass${i}`));
+    const place = (list: number[][], mats: THREE.Material[], geo: THREE.BufferGeometry, pos: (x: number, y: number) => THREE.Vector3) => {
+      for (let v = 0; v < V; v++) {
+        const mine = list.filter(([x, y]) => vary(x, y) === v); if (!mine.length) continue;
+        const im = new THREE.InstancedMesh(geo, mats[v], mine.length);
+        mine.forEach(([x, y], i) => { im.setMatrixAt(i, M.makeTranslation(...pos(x, y).toArray())); add(`${x},${y}`, { m: im, i }); });
+        scene.add(im);
+      }
+    };
+    place(all, stoneMats, new THREE.PlaneGeometry(1.0, 1.0), (x, y) => new THREE.Vector3(x + 0.5, y + 0.5, 1.01));
+    place(tops, grassMats, new THREE.PlaneGeometry(1.08, 0.42), (x, y) => new THREE.Vector3(x + 0.5, y + 1.07, 1.03));
+    // hanging vines under floating platforms (every 3rd exposed bottom tile)
+    const vt = all.filter(t => bottom(t) && t[1] >= 2).filter((_, i) => i % 3 === 0);
+    if (vt.length) { const vm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.5, 1.25), sprite('vines'), vt.length);
+      vt.forEach(([x, y], i) => { vm.setMatrixAt(i, M.makeTranslation(x + 0.5, y - 0.45, 1.06)); add(`${x},${y}`, { m: vm, i }); }); scene.add(vm); }
+    this.scenery(tops);
     for (let i = 0; i < 70; i++) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), bm); m.visible = false; scene.add(m);
       this.deb.push({ m, v: new THREE.Vector3(), life: 0 });
     }
   }
-    // ---- Fluffy foliage: alpha-tested leaf cards, ONE draw call for every canopy/bush ----
-  leaves: { p: THREE.Vector3; q: THREE.Quaternion; s: number; c: THREE.Color }[] = [];
-  trunks: { p: THREE.Vector3; h: number; w: number }[] = [];
-  static leafTex() {
-    const N = 64, d = new Uint8Array(N * N * 4), h = (x: number, y: number) => Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
-    const blobs = Array.from({ length: 9 }, () => [16 + rnd() * 32, 16 + rnd() * 32, 8 + rnd() * 9]);
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-      let a = 0, best = 0;
-      for (const [bx, by, r] of blobs) { const dd = Math.hypot(x - bx, y - by) / (r * (0.8 + h(x, y) * 0.4)); if (dd < 1) { a = 1; best = Math.max(best, 1 - dd); } }
-      const i = (y * N + x) * 4, sh = Math.min(255, (0.5 + 0.5 * ((y / N) * 0.6 + best * 0.4)) * 255);
-      d[i] = d[i + 1] = d[i + 2] = sh; d[i + 3] = a * 255;
+  // Round bush sprites as tree canopies: far background forest + small trees on platforms + low bushes behind the lane
+  scenery(tops: number[][]) {
+    const bushes: { p: THREE.Vector3; s: number; pink: boolean }[] = [], trunks: { p: THREE.Vector3; h: number; w: number }[] = [];
+    const tree = (x: number, y: number, z: number, h: number, s: number, pink: boolean) => { trunks.push({ p: new THREE.Vector3(x, y + h / 2, z), h, w: 0.18 + s * 0.07 }); bushes.push({ p: new THREE.Vector3(x, y + h + s * 0.3, z + 0.01), s, pink }); };
+    for (let x = -6; x < 105; x += 5.5) {
+      const z = -5 - rnd() * 6, pink = rnd() < 0.4, s = 5 + rnd() * 3;
+      tree(x + rnd() * 3, -1, z, 4 + rnd() * 3, s, pink); bushes.push({ p: new THREE.Vector3(x + 2 + rnd() * 3, 3 + rnd() * 2, z - 1), s: s * 0.7, pink: !pink });
     }
-    const t = new THREE.DataTexture(d, N, N); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true; return t;
-  }
-  foliage(cx: number, cy: number, cz: number, rx: number, ry: number, n: number, magenta = false) {
-    const pal = (magenta ? [0x7a1a5a, 0xc23a9a, 0xff7ac8] : [0x1f6b2a, 0x3f9a34, 0xa6d84a]).map(c => new THREE.Color(c));
-    for (let i = 0; i < n; i++) {
-      const a = rnd() * 6.283, r = Math.sqrt(rnd()), py = Math.sin(a) * r * ry, t = (py / ry + 1) / 2;
-      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((rnd() - 0.5) * 0.6, (rnd() - 0.5) * 0.6, rnd() * 6.283));
-      this.leaves.push({ p: new THREE.Vector3(cx + Math.cos(a) * r * rx, cy + py, cz + (rnd() - 0.5) * rx * 0.7), q, s: 0.9 + rnd() * 0.9,
-        c: pal[t > 0.66 ? 2 : t > 0.33 ? 1 : 0].clone().offsetHSL((rnd() - 0.5) * 0.03, 0, (rnd() - 0.5) * 0.06) });
-    }
-  }
-  tree(x: number, y: number, z: number, h: number, rx: number, magenta: boolean, n = 45) {
-    this.trunks.push({ p: new THREE.Vector3(x, y + h / 2, z), h, w: 0.18 + rx * 0.08 });
-    this.foliage(x, y + h + rx * 0.35, z, rx, rx * 0.8, n, magenta);
-  }
-  decorate() {
-    const tops = [...this.tiles].map(k => k.split(',').map(Number)).filter(([x, y]) => !this.tiles.has(`${x},${y + 1}`)).sort((a, b) => a[0] - b[0]);
-    // far background forest (depth + fog = fake atmosphere)
-    for (let x = -6; x < 110; x += 3.2) this.tree(x + rnd() * 2, -1, -5 - rnd() * 7, 4 + rnd() * 5, 2.6 + rnd() * 1.6, rnd() < 0.25, 55);
     tops.forEach(([x, y], i) => {
-      const top = y + 1;
-      if (i % 7 === 3 && x > 3 && x < 76) this.tree(x + 0.5, top, -1.3, 1.2 + rnd() * 2, 1.2 + rnd() * 0.8, rnd() < 0.3, 40); // trees ON platforms
-      if (i % 3 === 0) this.foliage(x + 0.5, top + 0.3, 1.15, 0.8, 0.35, 12, rnd() < 0.2);                                   // front bushes overlapping edges
+      if (i % 7 === 3 && x > 3 && x < 76) tree(x + 0.5, y + 1, -1.4, 0.8 + rnd() * 1.5, 1.6 + rnd() * 0.9, rnd() < 0.3);
+      if (i % 5 === 1) bushes.push({ p: new THREE.Vector3(x + 0.5, y + 1.4, -0.9), s: 1.1 + rnd() * 0.4, pink: false });
     });
-    // leaf cards -> one InstancedMesh
-    const tex = Level.leafTex(), mat = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 });
-    const im = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, this.leaves.length), M = new THREE.Matrix4();
-    this.leaves.forEach((l, i) => { im.setMatrixAt(i, M.compose(l.p, l.q, new THREE.Vector3(l.s, l.s, l.s))); im.setColorAt(i, l.c); });
-    this.scene.add(im);
-    // trunks
-    const tm = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 6), new THREE.MeshStandardMaterial({ color: PAL.trunk, roughness: 1 }), this.trunks.length);
-    this.trunks.forEach((t, i) => tm.setMatrixAt(i, M.compose(t.p, new THREE.Quaternion(), new THREE.Vector3(t.w, t.h, t.w)))); this.scene.add(tm);
-    // grass tufts on every top tile
-    const gm = new THREE.InstancedMesh(new THREE.ConeGeometry(0.05, 0.35, 3), new THREE.MeshStandardMaterial({ roughness: 1 }), tops.length * 7), c = new THREE.Color();
-    tops.forEach(([x, y], i) => { for (let k = 0; k < 7; k++) {
-      const hh = 0.6 + rnd() * 0.9; gm.setMatrixAt(i * 7 + k, M.compose(new THREE.Vector3(x + rnd(), y + 1.05 + hh * 0.12, (rnd() - 0.5) * 1.9),
-        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, (rnd() - 0.5) * 0.5)), new THREE.Vector3(1, hh, 1)));
-      gm.setColorAt(i * 7 + k, c.set(rnd() < 0.5 ? 0x9be34a : 0x5fbf3a)); } });
-    this.scene.add(gm);
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+    for (const pink of [false, true]) {
+      const list = bushes.filter(b => b.pink === pink); if (!list.length) continue;
+      const im = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1.04), sprite(pink ? 'bush_pink' : 'bush'), list.length);
+      list.forEach((b, i) => im.setMatrixAt(i, M.compose(b.p, Q.setFromEuler(new THREE.Euler(0, 0, (rnd() - 0.5) * 0.15)), new THREE.Vector3(b.s * 1.6, b.s * 1.6, 1))));
+      this.scene.add(im);
+    }
+    const tm = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 6), new THREE.MeshStandardMaterial({ color: PAL.trunk, roughness: 1 }), trunks.length);
+    trunks.forEach((t, i) => tm.setMatrixAt(i, M.compose(t.p, new THREE.Quaternion(), new THREE.Vector3(t.w, t.h, t.w)))); this.scene.add(tm);
   }
   solid(ix: number, iy: number) { return this.tiles.has(`${ix},${iy}`); }
   destroy(ix: number, iy: number) {
-    const key = `${ix},${iy}`; const k = this.idx.get(key);
-    if (k === undefined || !this.tiles.has(key)) return false;
+    const key = `${ix},${iy}`; if (!this.tiles.has(key)) return false;
     this.tiles.delete(key);
-    const z = new THREE.Matrix4().makeScale(0, 0, 0);
-    this.body.setMatrixAt(k, z); this.cap.setMatrixAt(k, z);
-    this.body.instanceMatrix.needsUpdate = this.cap.instanceMatrix.needsUpdate = true;
+    const z = new THREE.Matrix4().makeScale(0, 0, 0), touched = new Set<THREE.InstancedMesh>();
+    for (const p of this.parts.get(key) ?? []) { p.m.setMatrixAt(p.i, z); touched.add(p.m); }
+    touched.forEach(m => (m.instanceMatrix.needsUpdate = true));
     this.burst(ix + 0.5, iy + 0.5, 6); return true;
   }
   burst(x: number, y: number, n: number) {
