@@ -27,7 +27,8 @@ export class Hazards {
 export class Drone {
   m = new THREE.Group(); hp = 3; t = Math.random() * 6; alive = true;
   constructor(scene: THREE.Scene, public bx: number, public by: number, public range = 3) {
-    this.m.add(mk(new THREE.IcosahedronGeometry(0.5, 1), 0x7a2cff, 0x2a0a66), Object.assign(mk(new THREE.TorusGeometry(0.7, 0.07, 6, 16), 0xffd23a, 0x553300), { rotation: new THREE.Euler(Math.PI / 2, 0, 0) }));
+    const ring = mk(new THREE.TorusGeometry(0.7, 0.07, 6, 16), 0xffd23a, 0x553300); ring.rotation.x = Math.PI / 2;
+    this.m.add(mk(new THREE.IcosahedronGeometry(0.5, 1), 0x7a2cff, 0x2a0a66), ring);
     scene.add(this.m);
   }
   update(dt: number, p: Player, bul: Bullets, lvl: Level, scene: THREE.Scene) {
