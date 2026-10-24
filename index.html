@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Skyrubble</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#8fd8ee;font-family:system-ui,sans-serif;touch-action:none;user-select:none}
+canvas{display:block}
+.bar{position:fixed;top:12px;height:16px;border:2px solid #fff8;border-radius:4px;background:#0006}
+.bar i{display:block;height:100%;width:100%;transition:width .15s}
+#hp{left:12px;width:min(32vw,220px)} #hp i{background:#ee2244}
+#boss{right:12px;width:min(32vw,220px);display:none} #boss i{background:#d63ea8}
+#score{position:fixed;top:6px;left:50%;transform:translateX(-50%);color:#fff;font:900 28px system-ui;text-shadow:0 2px 0 #0007}
+#msg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;color:#fff;font:900 56px system-ui;text-shadow:0 4px 0 #0008;text-align:center}
+#touch{display:none}
+#touch button{position:fixed;bottom:22px;width:78px;height:78px;border-radius:50%;border:3px solid #fff9;background:#0004;color:#fff;font:700 22px system-ui}
+#bl{left:18px}#br{left:110px}#bj{right:110px}#bf{right:18px}
+</style></head><body>
+<div class="bar" id="hp"><i></i></div><div id="score">0</div><div class="bar" id="boss"><i></i></div><div id="msg"></div>
+<div id="touch"><button id="bl">◀</button><button id="br">▶</button><button id="bj">⤒</button><button id="bf">✦</button></div>
+<script type="module" src="/src/main.ts"></script></body></html>
