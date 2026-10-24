@@ -44,27 +44,53 @@ export class Level {
       this.deb.push({ m, v: new THREE.Vector3(), life: 0 });
     }
   }
-  // Round bush sprites as tree canopies: far background forest + small trees on platforms + low bushes behind the lane
+  // Layered background: far hazy silhouettes (fog:false, flat blue) -> mid trees on floating rocks -> mist bank
   scenery(tops: number[][]) {
+    const S = this.scene, M = new THREE.Matrix4(), Q = new THREE.Quaternion(), ID = new THREE.Quaternion();
     const bushes: { p: THREE.Vector3; s: number; pink: boolean }[] = [], trunks: { p: THREE.Vector3; h: number; w: number }[] = [];
-    const tree = (x: number, y: number, z: number, h: number, s: number, pink: boolean) => { trunks.push({ p: new THREE.Vector3(x, y + h / 2, z), h, w: 0.18 + s * 0.07 }); bushes.push({ p: new THREE.Vector3(x, y + h + s * 0.3, z + 0.01), s, pink }); };
-    for (let x = -6; x < 105; x += 5.5) {
-      const z = -5 - rnd() * 6, pink = rnd() < 0.4, s = 5 + rnd() * 3;
-      tree(x + rnd() * 3, -1, z, 4 + rnd() * 3, s, pink); bushes.push({ p: new THREE.Vector3(x + 2 + rnd() * 3, 3 + rnd() * 2, z - 1), s: s * 0.7, pink: !pink });
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x5f6b7d, roughness: 1, flatShading: true }), topMat = new THREE.MeshStandardMaterial({ color: PAL.grass, roughness: 1 });
+    const island = (x: number, y: number, z: number, r: number) => {
+      const g = new THREE.Group(), h = r * 1.5;
+      const rock = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), rockMat); rock.rotation.x = Math.PI; rock.position.y = -h / 2;
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r * 0.95, 0.4, 7), topMat); cap.position.y = -0.18;
+      g.add(rock, cap); g.position.set(x, y, z); S.add(g);
+    };
+    const tree = (x: number, y: number, z: number, h: number, s: number, pink: boolean, rock = false) => {
+      trunks.push({ p: new THREE.Vector3(x, y + h / 2, z), h, w: 0.18 + s * 0.07 }); bushes.push({ p: new THREE.Vector3(x, y + h + s * 0.3, z + 0.01), s, pink });
+      if (rock) island(x, y, z, s * 0.55);
+    };
+    // far hazy giant trees: 3 layers, farther = lighter. Not fogged on purpose (they should read as a bluish shadow)
+    for (let L = 0; L < 3; L++) {
+      const z = -24 - L * 14, col = [0x78b2da, 0x92c4e4, 0xaed6ee][L], op = [0.5, 0.42, 0.35][L], list: { x: number; y: number; s: number }[] = [];
+      for (let x = -50 - L * 8; x < 160; x += 22 + L * 4 + rnd() * 6) list.push({ x, y: 4 + rnd() * 7, s: 16 + rnd() * 10 });
+      const mk = (map: boolean) => new THREE.MeshBasicMaterial({ map: map ? tex('silhouette') : null, color: col, transparent: true, opacity: op, depthWrite: false, fog: false, alphaTest: map ? 0.02 : 0 });
+      const crowns = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1.04), mk(true), list.length), stems = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mk(false), list.length);
+      list.forEach((t, i) => {
+        crowns.setMatrixAt(i, M.compose(new THREE.Vector3(t.x, t.y, z), ID, new THREE.Vector3(t.s, t.s, 1)));
+        stems.setMatrixAt(i, M.compose(new THREE.Vector3(t.x, t.y - t.s * 0.9, z), ID, new THREE.Vector3(t.s * 0.1, t.s * 1.3, 1)));
+      });
+      crowns.renderOrder = stems.renderOrder = -20 + L * -1; S.add(stems, crowns);
     }
+    // mid layers: real textured trees standing on floating rocks (so nothing floats), slightly hazed by scene fog
+    for (let x = -6; x < 105; x += 6.5) { const z = -5 - rnd() * 5, pink = rnd() < 0.4; tree(x + rnd() * 3, -1.5 + rnd() * 2, z, 3 + rnd() * 3, 3.2 + rnd() * 2.2, pink, true); }
+    for (let x = -10; x < 110; x += 10) { const z = -14 - rnd() * 4, pink = rnd() < 0.5; tree(x + rnd() * 4, 1 + rnd() * 4, z, 4 + rnd() * 3, 5 + rnd() * 2.5, pink, true); }
     tops.forEach(([x, y], i) => {
       if (i % 7 === 3 && x > 3 && x < 76) tree(x + 0.5, y + 1, -1.4, 0.8 + rnd() * 1.5, 1.6 + rnd() * 0.9, rnd() < 0.3);
       if (i % 5 === 1) bushes.push({ p: new THREE.Vector3(x + 0.5, y + 1.4, -0.9), s: 1.1 + rnd() * 0.4, pink: false });
     });
-    const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
     for (const pink of [false, true]) {
       const list = bushes.filter(b => b.pink === pink); if (!list.length) continue;
       const im = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1.04), sprite(pink ? 'bush_pink' : 'bush'), list.length);
       list.forEach((b, i) => im.setMatrixAt(i, M.compose(b.p, Q.setFromEuler(new THREE.Euler(0, 0, (rnd() - 0.5) * 0.15)), new THREE.Vector3(b.s * 1.6, b.s * 1.6, 1))));
-      this.scene.add(im);
+      S.add(im);
     }
     const tm = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.6, 1, 1, 6), new THREE.MeshStandardMaterial({ color: PAL.trunk, roughness: 1 }), trunks.length);
-    trunks.forEach((t, i) => tm.setMatrixAt(i, M.compose(t.p, new THREE.Quaternion(), new THREE.Vector3(t.w, t.h, t.w)))); this.scene.add(tm);
+    trunks.forEach((t, i) => tm.setMatrixAt(i, M.compose(t.p, ID, new THREE.Vector3(t.w, t.h, t.w)))); S.add(tm);
+    // mist bank: vertical gradient (clear at top, milky at bottom) hides the bottoms of rocks and the void under the level
+    const N = 64, d = new Uint8Array(N * 4); for (let i = 0; i < N; i++) { const a = Math.pow(1 - i / (N - 1), 1.4); d.set([205, 236, 248, Math.round(a * 235)], i * 4); }
+    const gt = new THREE.DataTexture(d, 1, N); gt.colorSpace = THREE.SRGBColorSpace; gt.magFilter = gt.minFilter = THREE.LinearFilter; gt.needsUpdate = true;
+    const mist = new THREE.Mesh(new THREE.PlaneGeometry(320, 22), new THREE.MeshBasicMaterial({ map: gt, transparent: true, depthWrite: false, fog: false }));
+    mist.position.set(50, -3, -3.2); mist.renderOrder = -5; S.add(mist);
   }
   solid(ix: number, iy: number) { return this.tiles.has(`${ix},${iy}`); }
   destroy(ix: number, iy: number) {

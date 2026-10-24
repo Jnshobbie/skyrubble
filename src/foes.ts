@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { Level } from './level';
 import { Player, Bullets } from './player';
+import { AnimSprite } from './anim';
+import { ENEMY, BOSS } from './sprites';
 const mk = (g: THREE.BufferGeometry, c: number, e = 0) => { const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: e })); m.castShadow = true; return m; };
 
 // Enemy fire / shockwaves
@@ -60,47 +62,87 @@ export class Dragon {
   }
 }
 
-// Boss: state machine (mirrors the reference's Animator graph). Hook clips into enter().
+// Shield soldier: patrols, chases, slashes. Shield blocks shots from the front; shoot him from behind (or jump over).
+export class Soldier {
+  spr: AnimSprite; hp = 4; dir = 1; alive = true; x: number; st: 'move' | 'slash' | 'dying' = 'move'; t = 0; guard = 0; hitDone = false;
+  constructor(scene: THREE.Scene, public x0: number, public y: number, public range = 3) { this.x = x0; this.spr = new AnimSprite(ENEMY, 'enemy', scene); }
+  update(dt: number, p: Player, bul: Bullets, lvl: Level, scene: THREE.Scene) {
+    const dx = p.x - this.x, near = Math.abs(dx) < 7 && Math.abs(p.y - this.y) < 2.2; this.t += dt; this.guard -= dt;
+    if (this.st === 'dying') { this.spr.play('death', false); this.spr.update(dt); if (this.spr.done && this.t > 2.2) { scene.remove(this.spr.mesh); this.alive = false; } this.spr.set(this.x, this.y, 0.2, this.dir); return 0; }
+    if (bul.hit(this.x, this.y + 0.8, 0.75)) {
+      if (Math.sign(dx) === this.dir && this.st !== 'slash') this.guard = 0.25;               // blocked by shield
+      else if (--this.hp <= 0) { this.st = 'dying'; this.t = 0; lvl.burst(this.x, this.y + 0.8, 10); return 200; }
+    }
+    if (this.st === 'slash') {
+      this.spr.play('slash', false); if (this.t > 0.25 && this.t < 0.45 && !this.hitDone && Math.abs(dx) < 2.1 && Math.abs(p.y - this.y) < 1.6) { p.hurt(Math.sign(dx) || 1); this.hitDone = true; }
+      if (this.t > 0.55) { this.st = 'move'; this.t = 0; }
+    } else {
+      if (near) this.dir = Math.sign(dx) || this.dir;
+      if (near && Math.abs(dx) < 1.7) { this.st = 'slash'; this.t = 0; this.hitDone = false; }
+      else {
+        const sp = near ? 3.2 : 1.5, nx = this.x + this.dir * sp * dt;
+        const floor = lvl.solid(Math.floor(nx + this.dir * 0.5), Math.floor(this.y - 0.2)), wall = lvl.solid(Math.floor(nx + this.dir * 0.6), Math.floor(this.y + 0.5));
+        if (floor && !wall) this.x = nx; else if (!near) this.dir = -this.dir;
+        if (!near && Math.abs(this.x - this.x0) > this.range) this.dir = Math.sign(this.x0 - this.x);
+      }
+      this.spr.play(this.guard > 0 ? 'shield' : near ? 'run' : 'walk');
+    }
+    if (Math.abs(dx) < 0.6 && Math.abs(p.y - this.y) < 1.2) p.hurt(Math.sign(dx) || 1);
+    this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.dir); return 0;
+  }
+}
+
+// Boss: state machine (mirrors the reference's Animator graph). Each state plays one clip of the gorilla sprite.
 type S = 'idle' | 'intimidate' | 'stomp' | 'club' | 'block' | 'getAxe' | 'defeat';
 const DUR: Record<S, number> = { idle: 1.0, intimidate: 1.4, stomp: 1.1, club: 1.1, block: 1.6, getAxe: 1.6, defeat: 2.2 };
+const CLIP: Record<S, string> = { idle: 'idle', intimidate: 'intimidate', stomp: 'stomp', club: 'swing', block: 'block', getAxe: 'shieldBreak', defeat: 'death' };
 const CHAIN: Record<number, S[]> = { 1: ['intimidate', 'stomp', 'club', 'block'], 2: ['intimidate', 'stomp', 'club', 'stomp', 'club'] };
 export class Boss {
-  m = new THREE.Group(); shieldHp = 14; hp = 30; phase = 1; st: S = 'idle'; t = 0; i = 0; active = false; dead = false; face = -1; fired = false;
-  mats: THREE.MeshStandardMaterial[] = []; shield: THREE.Mesh; weapon: THREE.Mesh;
-  constructor(public scene: THREE.Scene, public x: number, public y: number) {
-    const body = mk(new THREE.BoxGeometry(2.6, 3.2, 2), 0x6b3b2a); body.position.y = 1.6;
-    const head = mk(new THREE.BoxGeometry(1.4, 1.1, 1.4), 0x8a8f99); head.position.y = 3.7;
-    const horn = mk(new THREE.ConeGeometry(0.25, 0.9, 5), 0xe8e2c8); horn.position.set(0.5, 4.5, 0);
-    this.weapon = mk(new THREE.CylinderGeometry(0.2, 0.45, 3, 7), 0x4a3320); this.weapon.position.set(-1.8, 2.4, 0.9); this.weapon.rotation.z = 0.5;
-    this.shield = mk(new THREE.CylinderGeometry(1.5, 1.5, 0.3, 14), 0x4fd6ff, 0x0a4a66); this.shield.rotation.x = Math.PI / 2; this.shield.position.set(1.6, 2, 1.1);
-    this.m.add(body, head, horn, this.weapon, this.shield);
-    this.m.traverse(o => { const mm = (o as THREE.Mesh).material; if (mm instanceof THREE.MeshStandardMaterial) this.mats.push(mm); });
-    this.m.position.set(x, y, 0); this.m.visible = false; scene.add(this.m);
+  spr: AnimSprite; shieldHp = 14; hp = 30; phase = 1; st: S = 'idle'; t = 0; i = 0; active = false; dead = false; face = -1; fired = false; flash = 0;
+  constructor(public scene: THREE.Scene, public x: number, public y: number) { this.spr = new AnimSprite(BOSS, 'boss', scene); this.spr.mesh.visible = false; this.spr.set(x, y, 0.2, -1); }
+  enter(s: S, p: Player) {
+    this.st = s; this.t = 0; this.fired = false; this.face = p.x < this.x ? -1 : 1;
+    const n = BOSS.clips[CLIP[s]].length, sp = this.phase === 2 ? 1.4 : 1;
+    this.spr.play(CLIP[s], s === 'idle' || s === 'block', n / (DUR[s] / sp));
   }
-  enter(s: S, p: Player) { this.st = s; this.t = 0; this.fired = false; this.face = p.x < this.x ? -1 : 1; this.m.scale.x = -this.face; /* play(clip) here */ }
   next(p: Player) { this.enter(this.hp <= 0 ? 'defeat' : CHAIN[this.phase][this.i++ % CHAIN[this.phase].length], p); }
   damage(n: number, p: Player, lvl: Level) {
-    if (this.st === 'block' || this.dead || !this.active) return;
-    if (this.shieldHp > 0) { this.shieldHp -= n; lvl.burst(this.x + 1.6 * -this.face, this.y + 2, 4); if (this.shieldHp <= 0) { this.phase = 2; this.i = 0; this.shield.visible = false; lvl.burst(this.x, this.y + 2, 24); this.enter('getAxe', p); } }
+    if (this.st === 'block' || this.dead || !this.active || this.st === 'defeat') return;
+    this.flash = 0.07;
+    if (this.shieldHp > 0) { this.shieldHp -= n; lvl.burst(this.x + 1.8 * this.face, this.y + 2.2, 4); if (this.shieldHp <= 0) { this.phase = 2; this.i = 0; lvl.burst(this.x, this.y + 2.4, 24); this.enter('getAxe', p); } }
     else this.hp -= n;
   }
   update(dt: number, p: Player, bul: Bullets, lvl: Level, hz: Hazards) {
     if (!this.active || this.dead) return 0;
-    this.m.visible = true; const sp = this.phase === 2 ? 1.4 : 1; this.t += dt * sp;
-    if (bul.hit(this.x, this.y + 2, 1.7)) this.damage(1, p, lvl);
+    this.spr.mesh.visible = true; const sp = this.phase === 2 ? 1.4 : 1; this.t += dt * sp; this.flash -= dt;
+    if (this.st !== 'defeat' && bul.hit(this.x, this.y + 2.3, 2.0)) this.damage(1, p, lvl);
     const k = this.t / DUR[this.st];
-    const tele = (this.st === 'stomp' || this.st === 'club') && k < 0.55 ? (Math.sin(this.t * 30) * 0.5 + 0.5) * 0.9 : 0;
-    this.mats.forEach(mm => { mm.emissive.setRGB(tele, 0, 0); });
-    this.m.position.y = this.y + (this.st === 'stomp' && k > 0.45 && k < 0.6 ? 0.8 : 0) + (this.st === 'intimidate' ? Math.sin(this.t * 20) * 0.08 : 0);
-    this.weapon.rotation.z = this.st === 'club' ? 0.5 - Math.sin(Math.min(1, k * 1.4) * Math.PI) * 1.8 : 0.5;
-    if (this.st === 'stomp' && k > 0.6 && !this.fired) { this.fired = true; lvl.burst(this.x, this.y, 12); hz.spawn(this.x - 1.5, this.y + 0.4, -9, 0, 0.3, 2.5, true); hz.spawn(this.x + 1.5, this.y + 0.4, 9, 0, 0.3, 2.5, true); }
-    if (this.st === 'club' && k > 0.45 && k < 0.7 && Math.abs(p.x - (this.x + this.face * 2.4)) < 2.2 && Math.abs(p.y - this.y) < 2.6) p.hurt(this.face);
-    if (Math.abs(p.x - this.x) < 1.6 && p.y < this.y + 3.2 && p.y + 1.3 > this.y) p.hurt(Math.sign(p.x - this.x) || 1);
+    const tele = (this.st === 'stomp' || this.st === 'club') && k < 0.5 ? (Math.sin(this.t * 30) * 0.5 + 0.5) * 0.6 : 0;
+    this.spr.mat.color.setRGB(this.flash > 0 ? 3 : 1 + tele * 2.5, this.flash > 0 ? 3 : 1, this.flash > 0 ? 3 : 1);
+    if (this.st === 'stomp' && k > 0.5 && !this.fired) { this.fired = true; lvl.burst(this.x, this.y, 12); hz.spawn(this.x - 2, this.y + 0.4, -9, 0, 0.3, 2.5, true); hz.spawn(this.x + 2, this.y + 0.4, 9, 0, 0.3, 2.5, true); }
+    if (this.st === 'club' && k > 0.45 && k < 0.75 && Math.abs(p.x - (this.x + this.face * 2.6)) < 2.4 && Math.abs(p.y - this.y) < 2.8) p.hurt(this.face);
+    if (this.st !== 'defeat' && Math.abs(p.x - this.x) < 1.8 && p.y < this.y + 4 && p.y + 1.3 > this.y) p.hurt(Math.sign(p.x - this.x) || 1);
+    this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
     if (this.t >= DUR[this.st]) {
-      if (this.st === 'defeat') { this.dead = true; lvl.burst(this.x, this.y + 2, 60); this.scene.remove(this.m); return 5000; }
+      if (this.st === 'defeat') { this.dead = true; lvl.burst(this.x, this.y + 2.2, 60); return 5000; }
       this.next(p);
     }
-    if (this.st === 'defeat') this.m.scale.y = Math.max(0.05, 1 - k);
     return 0;
+  }
+}
+
+// Spinning saw blade that patrols a short rail (x and/or y range). Not shootable.
+export class Saw {
+  m: THREE.Mesh; t = Math.random() * 6;
+  constructor(scene: THREE.Scene, public x: number, public y: number, public rx = 0, public ry = 0, public speed = 1.3, public r = 0.9) {
+    const map = new THREE.TextureLoader().load('art/saw.png'); map.colorSpace = THREE.SRGBColorSpace;
+    this.m = new THREE.Mesh(new THREE.PlaneGeometry(r * 2.2, r * 2.2), new THREE.MeshBasicMaterial({ map, alphaTest: 0.5, color: 0xdddddd }));
+    scene.add(this.m);
+  }
+  update(dt: number, p: Player) {
+    this.t += dt * this.speed;
+    const x = this.x + Math.sin(this.t) * this.rx, y = this.y + Math.sin(this.t) * this.ry;
+    this.m.position.set(x, y, 0.3); this.m.rotation.z -= dt * 9;
+    if (Math.hypot(p.x - x, p.y + 0.65 - y) < this.r + 0.3) p.hurt(Math.sign(p.x - x) || 1);
   }
 }

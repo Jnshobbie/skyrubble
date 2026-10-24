@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { Level } from './level';
 import { inp } from './input';
+import { AnimSprite } from './anim';
+import { HERO } from './sprites';
 const G = -42, JUMP = 15, RUN = 7.5, W = 0.7, H = 1.3;
 export class Bullets {
   list: { m: THREE.Mesh; vx: number; life: number }[] = [];
@@ -25,14 +27,9 @@ export class Bullets {
   }
 }
 export class Player {
-  mesh = new THREE.Group(); x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; face = 1; hp = 5; inv = 0; cd = 0;
-  constructor(scene: THREE.Scene) {
-    // Placeholder body: swap for a GLB (Mixamo Idle/Run/Jump) like Jake in HollowSky.
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.6, 4, 8), new THREE.MeshStandardMaterial({ color: 0x3a7bff, roughness: 0.5 }));
-    body.castShadow = true; body.position.y = H / 2; this.mesh.add(body);
-    const gun = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.14), new THREE.MeshStandardMaterial({ color: 0x222 })); gun.position.set(0.4, 0.8, 0); this.mesh.add(gun);
-    scene.add(this.mesh);
-  }
+  spr: AnimSprite; x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; face = 1; hp = 5; inv = 0; cd = 0;
+  constructor(scene: THREE.Scene) { this.spr = new AnimSprite(HERO, 'hero', scene); }
+  animOnly(dt: number) { this.spr.play('death', false); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face); }
   hurt(dir: number) { if (this.inv > 0) return; this.hp--; this.inv = 1.2; this.vy = 9; this.vx = dir * 8; }
   update(dt: number, lvl: Level, bul: Bullets) {
     this.inv = Math.max(0, this.inv - dt); this.cd -= dt;
@@ -44,10 +41,11 @@ export class Player {
     this.vy = Math.max(this.vy + G * dt, -28);
     this.x += this.vx * dt; this.collide(lvl, true);
     this.y += this.vy * dt; this.ground = false; this.collide(lvl, false);
-    if (inp.fire && this.cd <= 0) { bul.spawn(this.x + this.face * 0.6, this.y + 0.8, this.face); this.cd = 0.16; }
-    this.mesh.position.set(this.x, this.y, 0); this.mesh.scale.x = this.face;
-    this.mesh.visible = this.inv <= 0 || Math.floor(this.inv * 14) % 2 === 0;
-    const sq = this.ground ? 1 : 1 + Math.min(0.18, Math.abs(this.vy) * 0.012); this.mesh.scale.y = sq; // squash & stretch
+    if (inp.fire && this.cd <= 0) { bul.spawn(this.x + this.face * 1.0, this.y + 0.95, this.face); this.cd = 0.16; }
+    const run = Math.abs(this.vx) > 0.8;
+    const clip = this.inv > 0.95 ? 'hurt' : !this.ground ? 'jump' : inp.fire ? (run ? 'shootRun' : 'shootStand') : run ? 'run' : 'idle';
+    this.spr.play(clip); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
+    this.spr.mesh.visible = this.inv <= 0 || this.inv > 0.95 || Math.floor(this.inv * 14) % 2 === 0;
   }
   collide(lvl: Level, horiz: boolean) {
     for (let ix = Math.floor(this.x - W / 2); ix <= Math.floor(this.x + W / 2); ix++)
