@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Level } from './level';
 import { Player, Bullets } from './player';
 import { AnimSprite } from './anim';
+import { Enemy3D } from './enemy3d';
+const USE3D_ENEMY = new URLSearchParams(location.search).get('enemy') === '3d'; // open /?hero=3d&enemy=3d
 import { ENEMY, BOSS } from './sprites';
 const mk = (g: THREE.BufferGeometry, c: number, e = 0) => { const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: e })); m.castShadow = true; return m; };
 
@@ -64,8 +66,8 @@ export class Dragon {
 
 // Shield soldier: patrols, chases, slashes. Shield blocks shots from the front; shoot him from behind (or jump over).
 export class Soldier {
-  spr: AnimSprite; hp = 4; dir = 1; alive = true; x: number; st: 'move' | 'slash' | 'dying' = 'move'; t = 0; guard = 0; hitDone = false;
-  constructor(scene: THREE.Scene, public x0: number, public y: number, public range = 3) { this.x = x0; this.spr = new AnimSprite(ENEMY, 'enemy', scene); }
+  spr: AnimSprite | Enemy3D; hp = 4; dir = 1; alive = true; x: number; st: 'move' | 'slash' | 'dying' = 'move'; t = 0; guard = 0; hitDone = false;
+  constructor(scene: THREE.Scene, public x0: number, public y: number, public range = 3) { this.x = x0; this.spr = USE3D_ENEMY ? new Enemy3D(scene) : new AnimSprite(ENEMY, 'enemy', scene); }
   update(dt: number, p: Player, bul: Bullets, lvl: Level, scene: THREE.Scene) {
     const dx = p.x - this.x, near = Math.abs(dx) < 7 && Math.abs(p.y - this.y) < 2.2; this.t += dt; this.guard -= dt;
     if (this.st === 'dying') { this.spr.play('death', false); this.spr.update(dt); if (this.spr.done && this.t > 2.2) { scene.remove(this.spr.mesh); this.alive = false; } this.spr.set(this.x, this.y, 0.2, this.dir); return 0; }
@@ -74,11 +76,11 @@ export class Soldier {
       else if (--this.hp <= 0) { this.st = 'dying'; this.t = 0; lvl.burst(this.x, this.y + 0.8, 10); return 200; }
     }
     if (this.st === 'slash') {
-      this.spr.play('slash', false); if (this.t > 0.25 && this.t < 0.45 && !this.hitDone && Math.abs(dx) < 2.1 && Math.abs(p.y - this.y) < 1.6) { p.hurt(Math.sign(dx) || 1); this.hitDone = true; }
+      this.spr.play('slash', false); if (this.t > 0.15 && this.t < 0.4 && !this.hitDone && Math.abs(dx) < 2.6 && Math.abs(p.y - this.y) < 1.8) { p.hurt(Math.sign(dx) || 1); this.hitDone = true; }
       if (this.t > 0.55) { this.st = 'move'; this.t = 0; }
     } else {
       if (near) this.dir = Math.sign(dx) || this.dir;
-      if (near && Math.abs(dx) < 1.7) { this.st = 'slash'; this.t = 0; this.hitDone = false; }
+      if (near && Math.abs(dx) < 2.6) { this.st = 'slash'; this.t = 0; this.hitDone = false; }
       else {
         const sp = near ? 3.2 : 1.5, nx = this.x + this.dir * sp * dt;
         const floor = lvl.solid(Math.floor(nx + this.dir * 0.5), Math.floor(this.y - 0.2)), wall = lvl.solid(Math.floor(nx + this.dir * 0.6), Math.floor(this.y + 0.5));
@@ -87,7 +89,6 @@ export class Soldier {
       }
       this.spr.play(this.guard > 0 ? 'shield' : near ? 'run' : 'walk');
     }
-    if (Math.abs(dx) < 0.6 && Math.abs(p.y - this.y) < 1.2) p.hurt(Math.sign(dx) || 1);
     this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.dir); return 0;
   }
 }

@@ -9,12 +9,25 @@ export function aimBone(bone: THREE.Object3D, child: THREE.Object3D, target: THR
   bone.parent!.getWorldQuaternion(_q3); _q3.invert().multiply(_q1);                                   // -> local space
   bone.quaternion.slerp(_q3, w); bone.updateMatrixWorld(true);
 }
+const _P = (o: THREE.Object3D) => o.getWorldPosition(new THREE.Vector3());
+/** Two-bone IK: put `hand` at T by bending the arm toward `pole`. Axis-independent (uses aimBone). */
+export function reach(up: THREE.Object3D, fore: THREE.Object3D, hand: THREE.Object3D, T: THREE.Vector3, pole: THREE.Vector3, w: number) {
+  up.updateWorldMatrix(true, true);
+  const S = _P(up), E = _P(fore), H = _P(hand), l1 = E.distanceTo(S), l2 = H.distanceTo(E);
+  const dir = T.clone().sub(S), d = Math.min(dir.length(), (l1 + l2) * 0.999); dir.normalize();
+  const a = Math.acos(THREE.MathUtils.clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  const side = pole.clone().addScaledVector(dir, -pole.dot(dir)).normalize();
+  const Ep = S.clone().addScaledVector(dir, Math.cos(a) * l1).addScaledVector(side, Math.sin(a) * l1);
+  aimBone(up, fore, Ep.sub(S).normalize(), w);
+  aimBone(fore, hand, T.clone().sub(_P(fore)).normalize(), w);
+}
+const GUN_SCALE = 0.78, GRIP = new THREE.Vector3(0, -0.07, 0.24), FORE = new THREE.Vector3(0, -0.04, -0.2); // in the gun file's own units (muzzle = -z)
 const MAP: Record<string, string> = { idle: 'Idle', run: 'Sprint', shootStand: 'Idle', shootRun: 'Sprint', jump: 'Jump', hurt: 'Idle', slide: 'Idle' };
 export class Hero3D {
   mesh = new THREE.Group(); private fall = new THREE.Group(); private mixer?: THREE.AnimationMixer; private acts: Record<string, THREE.AnimationAction> = {};
-  private bones: Record<string, THREE.Object3D> = {}; private gun = new THREE.Group(); private aimW = 0; private model?: THREE.Object3D; private cur = ''; private want = 'idle'; private yaw = 0; private deadT = 0; private flash = 0; private mats: THREE.MeshStandardMaterial[] = [];
+  private bones: Record<string, THREE.Object3D> = {}; private gun = new THREE.Group(); private gunModel?: THREE.Object3D; private aimW = 0; private model?: THREE.Object3D; private cur = ''; private want = 'idle'; private yaw = 0; private deadT = 0; private flash = 0; private mats: THREE.MeshStandardMaterial[] = [];
   constructor(scene: THREE.Scene, url = 'models/hero.glb') {
-    this.mesh.add(this.fall); scene.add(this.mesh); this.buildGun(scene);
+    this.mesh.add(this.fall); scene.add(this.mesh); this.loadGun(scene);
     new GLTFLoader().load(url, g => {
       const m = g.scene; m.scale.setScalar(0.9); this.fall.add(m); this.model = m;
       for (const n of ['RightArm', 'RightForeArm', 'RightHand', 'LeftArm', 'LeftForeArm', 'LeftHand']) { const b = m.getObjectByName(n); if (b) this.bones[n] = b; }
@@ -32,33 +45,34 @@ export class Hero3D {
     const n = MAP[this.want] ?? 'Idle'; if (n === this.cur || !this.acts[n]) return;
     const next = this.acts[n], prev = this.acts[this.cur]; next.reset().fadeIn(0.12).play(); next.timeScale = n === 'Sprint' ? 0.85 : 1; prev?.fadeOut(0.12); this.cur = n;
   }
-  // Placeholder gun (swap for a real model later). Shown only while aiming.
-  private buildGun(scene: THREE.Scene) {
-    const dark = new THREE.MeshStandardMaterial({ color: 0x26262c, roughness: 0.6 }), glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 0.6, 3) });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.13, 0.07), dark); body.position.set(0.12, 0.02, 0);
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.34, 8), dark); barrel.rotation.z = Math.PI / 2; barrel.position.set(0.48, 0.04, 0);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 0.06), dark); grip.position.set(0.04, -0.09, 0); grip.rotation.z = 0.2;
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.075), glow); strip.position.set(0.14, 0.06, 0);
-    this.gun.add(body, barrel, grip, strip); this.gun.visible = false; scene.add(this.gun);
+  private loadGun(scene: THREE.Scene) {
+    scene.add(this.gun); this.gun.visible = false;
+    new GLTFLoader().load('models/gun.glb', g => {
+      const m = g.scene; m.scale.setScalar(GUN_SCALE); m.rotation.y = -Math.PI / 2;            // muzzle (-z in file) -> +x (forward)
+      m.position.copy(GRIP.clone().applyEuler(m.rotation).multiplyScalar(GUN_SCALE)).negate(); // grip sits at the pivot (= right hand)
+      m.traverse(o => { (o as THREE.Mesh).frustumCulled = false; }); this.gun.add(m); this.gunModel = m;
+    }, undefined, e => console.warn('hero3d: gun.glb failed', e));
+  }
+  private fwd() { return new THREE.Vector3(1, 0, 0).applyQuaternion(this.mesh.quaternion); }
+  /** Where the right hand holds the grip: in front of the chest. */
+  private grip(): THREE.Vector3 {
+    const c = this.bones['Spine2'] ? _P(this.bones['Spine2']) : this.mesh.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+    const left = new THREE.Vector3(0, 0, -1).applyQuaternion(this.mesh.quaternion);
+    return c.addScaledVector(this.fwd(), 0.4).addScaledVector(left, -0.1).add(new THREE.Vector3(0, 0.0, 0));
   }
   /** World position the bullets should leave from (stable even before the arms finish raising). */
-  muzzle(): THREE.Vector3 {
-    const arm = this.bones['RightArm']; const f = new THREE.Vector3(1, 0, 0).applyQuaternion(this.mesh.quaternion);
-    const p = arm ? arm.getWorldPosition(new THREE.Vector3()) : this.mesh.position.clone().add(new THREE.Vector3(0, 1.3, 0));
-    return p.addScaledVector(f, 0.95).add(new THREE.Vector3(0, -0.06, 0));
-  }
+  muzzle(): THREE.Vector3 { return this.grip().addScaledVector(this.fwd(), 0.62).add(new THREE.Vector3(0, 0.1, 0)); }
   private aim(dt: number) {
     const want = this.want.startsWith('shoot') && !this.deadT ? 1 : 0; this.aimW += (want - this.aimW) * Math.min(1, dt * 16);
-    const b = this.bones; if (this.aimW < 0.01 || !b['RightArm'] || !b['LeftArm']) { this.gun.visible = false; return; }
+    const b = this.bones, w = this.aimW;
+    if (w < 0.01 || !b['RightArm'] || !b['LeftArm'] || !b['Spine2']) { this.gun.visible = false; return; }
     this.mesh.updateMatrixWorld(true);
-    const f = new THREE.Vector3(1, 0, 0).applyQuaternion(this.mesh.quaternion), left = new THREE.Vector3(0, 0, -1).applyQuaternion(this.mesh.quaternion);
-    const tr = f.clone().addScaledVector(left, 0.12).add(new THREE.Vector3(0, 0.06, 0)).normalize();     // right arm: forward, slightly inward
-    const tl = f.clone().addScaledVector(left, -0.5).add(new THREE.Vector3(0, 0.04, 0)).normalize();     // left arm: supports the gun, crossing inward
-    const w = this.aimW;
-    aimBone(b['RightArm'], b['RightForeArm'], tr, w); aimBone(b['RightForeArm'], b['RightHand'], tr, w);
-    aimBone(b['LeftArm'], b['LeftForeArm'], tl, w); aimBone(b['LeftForeArm'], b['LeftHand'], tl, w);
-    const h = b['RightHand'].getWorldPosition(new THREE.Vector3()); this.gun.position.copy(h).addScaledVector(f, -0.05);
-    this.gun.quaternion.copy(this.mesh.quaternion); this.gun.rotateZ(0.05); this.gun.visible = w > 0.4;
+    const TR = this.grip(), left = new THREE.Vector3(0, 0, -1).applyQuaternion(this.mesh.quaternion), down = new THREE.Vector3(0, -1, 0);
+    this.gun.position.copy(TR); this.gun.quaternion.copy(this.mesh.quaternion); this.gun.updateMatrixWorld(true);
+    const TL = this.gunModel ? this.gunModel.localToWorld(FORE.clone()) : TR.clone().addScaledVector(this.fwd(), 0.3);
+    reach(b['RightArm'], b['RightForeArm'], b['RightHand'], TR, down.clone().addScaledVector(left, -0.6), w);
+    reach(b['LeftArm'], b['LeftForeArm'], b['LeftHand'], TL, down.clone().addScaledVector(left, 0.6), w);
+    this.gun.visible = w > 0.4 && !!this.gunModel;
   }
   update(dt: number) {
     this.mixer?.update(dt); this.aim(dt);
