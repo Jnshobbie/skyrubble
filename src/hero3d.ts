@@ -60,8 +60,10 @@ export class Hero3D {
     const left = new THREE.Vector3(0, 0, -1).applyQuaternion(this.mesh.quaternion);
     return c.addScaledVector(this.fwd(), 0.4).addScaledVector(left, -0.1).add(new THREE.Vector3(0, 0.0, 0));
   }
-  /** World position the bullets should leave from (stable even before the arms finish raising). */
-  muzzle(): THREE.Vector3 { return this.grip().addScaledVector(this.fwd(), 0.62).add(new THREE.Vector3(0, 0.1, 0)); }
+  /** True once the arms are up and the gun is in place; Player waits for this before firing. */
+  get aimed(): boolean { return this.aimW > 0.85; }
+  /** World position of the barrel tip (read from the gun mesh itself, so bullets always leave the gun). */
+  muzzle(): THREE.Vector3 { this.gun.updateMatrixWorld(true); return this.gun.localToWorld(new THREE.Vector3(0.68, 0.04, 0)); }
   private aim(dt: number) {
     const want = this.want.startsWith('shoot') && !this.deadT ? 1 : 0; this.aimW += (want - this.aimW) * Math.min(1, dt * 16);
     const b = this.bones, w = this.aimW;

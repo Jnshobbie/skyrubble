@@ -43,7 +43,7 @@ export class Player {
     this.vy = Math.max(this.vy + G * dt, -28);
     this.x += this.vx * dt; this.collide(lvl, true);
     this.y += this.vy * dt; this.ground = false; this.collide(lvl, false);
-    if (inp.fire && this.cd <= 0) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face); this.cd = 0.16; }
+    if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face); this.cd = 0.16; }
     const run = Math.abs(this.vx) > 0.8;
     const clip = this.inv > 0.95 ? 'hurt' : !this.ground ? 'jump' : inp.fire ? (run ? 'shootRun' : 'shootStand') : run ? 'run' : 'idle';
     this.spr.play(clip); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
