@@ -4,6 +4,7 @@ import { poll, isTouch } from './input';
 import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
 import { Soldier, Dragon, Boss, Hazards, Saw } from './foes';
+import { ORC } from './enemy3d';
 
 const LEVEL = Number(new URLSearchParams(location.search).get('level') ?? 1); // ?level=2 → dragons
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -22,6 +23,7 @@ addEventListener('resize', resize); resize();
 const lvl = new Level(scene, [[0, 0, 20, 2], [24, 0, 14, 2], [42, 0, 12, 2], [58, 0, 40, 2], [8, 5, 4, 1], [16, 8, 4, 1], [27, 5, 5, 1], [34, 8, 4, 1], [44, 5, 5, 1], [50, 8, 3, 1], [31, 2, 2, 4], [62, 2, 1, 3] , [10, 2, 2, 2], [19, 2, 1, 3], [46, 2, 2, 2], [52, 2, 1, 3], [66, 2, 3, 2], [72, 2, 1, 4]]);
 const player = new Player(scene), bul = new Bullets(scene), hz = new Hazards(scene);
 const drones = [[6, 2, 2], [15, 2, 2], [28, 2, 2.5], [35.5, 2, 1.5], [50, 2, 2], [9.5, 6, 1.5], [28.5, 6, 2], [45.5, 6, 2]].map(([x, y, r]) => new Soldier(scene, x, y, r));
+const orcs = LEVEL >= 2 ? [[30, 2, 3], [48, 2, 2.5], [68, 2, 3]].map(([x, y, r]) => new Soldier(scene, x, y, r, { cfg: ORC, hp: 8, speed: 1.1, reach: 3.2, hit: [0.4, 0.7], dur: 1.4, shield: false, score: 400, hitY: 1.3, hitR: 1.1 })) : [];
 const dragons = LEVEL >= 2 ? [[22, 9], [40, 10], [56, 9]].map(([x, y]) => new Dragon(scene, x, y)) : [];
 const saws = [[14.5, 2.9, 1.8], [27.5, 2.9, 1.8], [50, 2.9, 1.5], [76, 2.9, 1.5]].map(([x, y, rx]) => new Saw(scene, x, y, rx));
 const boss = new Boss(scene, 88, 2);
@@ -34,7 +36,7 @@ const clock = new THREE.Clock();
   const dt = Math.min(clock.getDelta(), 1 / 30);
   if (!over) {
     poll(); player.update(dt, lvl, bul); bul.update(dt, lvl);
-    for (const d of drones) if (d.alive) score += d.update(dt, player, bul, lvl, scene);
+    for (const d of [...drones, ...orcs]) if (d.alive) score += d.update(dt, player, bul, lvl, scene);
     for (const d of dragons) if (d.alive) score += d.update(dt, player, bul, lvl, hz, scene);
     for (const s of saws) s.update(dt, player);
     if (!boss.active && player.x > 78) { boss.active = true; boss.next(player); $('boss').style.display = 'block'; }
@@ -43,7 +45,7 @@ const clock = new THREE.Clock();
     if (player.hp <= 0) { over = true; msg('GAME OVER<br><small>press R / reload</small>'); }
     if (boss.dead) { over = true; msg('SKYRUBBLE CLEARED!<br>' + score); }
   }
-  if (over && player.hp <= 0) player.animOnly(dt);
+  if (over && player.hp <= 0) player.animOnly(dt, lvl);
   ($('hp').firstChild as HTMLElement).style.width = Math.max(0, player.hp / 5 * 100) + '%';
   ($('boss').firstChild as HTMLElement).style.width = (boss.shieldHp > 0 ? boss.shieldHp / 14 * 50 + 50 : boss.hp / 30 * 50) + '%';
   $('score').textContent = String(score);

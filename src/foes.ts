@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { Level } from './level';
 import { Player, Bullets } from './player';
 import { AnimSprite } from './anim';
-import { Enemy3D } from './enemy3d';
-const USE3D_ENEMY = new URLSearchParams(location.search).get('enemy') === '3d'; // open /?hero=3d&enemy=3d
+import { Enemy3D, SOLDIER, type Cfg } from './enemy3d';
+import { Dragon3D } from './dragon3d';
+const USE3D_ENEMY = new URLSearchParams(location.search).get('enemy') !== '2d'; // 3D is the default; /?enemy=2d falls back to sprites/primitives
 import { ENEMY, BOSS } from './sprites';
 const mk = (g: THREE.BufferGeometry, c: number, e = 0) => { const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: e })); m.castShadow = true; return m; };
 
@@ -44,50 +45,72 @@ export class Drone {
   }
 }
 
-// Level 2: flying dragon that throws fireballs
+// Level 2: flying dragon that throws fireballs (3D model by default; the old primitive dragon remains for ?enemy=2d)
 export class Dragon {
-  m = new THREE.Group(); hp = 5; t = Math.random() * 6; cd = 1.5; alive = true; wings: THREE.Mesh[] = [];
-  constructor(scene: THREE.Scene, public bx: number, public by: number) {
+  m = new THREE.Group(); hp = 5; t = Math.random() * 6; cd = 1.5; alive = true; wings: THREE.Mesh[] = []; d3?: Dragon3D; dying = 0; vy = 0; x = 0; y = 0;
+  constructor(public scene: THREE.Scene, public bx: number, public by: number) {
+    this.x = bx; this.y = by;
+    if (USE3D_ENEMY) { this.d3 = new Dragon3D(scene); return; }
     this.m.add(mk(new THREE.SphereGeometry(0.7, 10, 8), 0xd6342a, 0x3a0500)); (this.m.children[0] as THREE.Mesh).scale.set(1.5, 0.8, 0.8);
     const head = mk(new THREE.ConeGeometry(0.3, 0.7, 6), 0xff7a2a); head.rotation.z = Math.PI / 2; head.position.x = 1.1; this.m.add(head);
     for (const s of [-1, 1]) { const w = mk(new THREE.BoxGeometry(1.4, 0.06, 0.8), 0x7a1a6a); w.position.set(-0.1, 0.4, s * 0.9); this.wings.push(w); this.m.add(w); }
     scene.add(this.m);
   }
+  private remove() { this.alive = false; this.scene.remove(this.d3 ? this.d3.mesh : this.m); }
   update(dt: number, p: Player, bul: Bullets, lvl: Level, hz: Hazards, scene: THREE.Scene) {
-    this.t += dt; const x = this.bx + Math.sin(this.t * 0.6) * 5, y = this.by + Math.sin(this.t * 1.3) * 1.2;
-    this.m.position.set(x, y, 0); this.m.scale.x = p.x > x ? 1 : -1;
-    this.wings.forEach((w, i) => w.rotation.x = Math.sin(this.t * 10) * 0.6 * (i ? 1 : -1));
+    if (this.dying > 0) {                                              // shot down: tumble and fall, then vanish (0.7s)
+      this.dying += dt; this.vy -= 30 * dt; this.y += this.vy * dt; this.x += Math.sign(p.x - this.x) * -2 * dt;
+      this.d3?.update(dt, 0, true); this.d3?.set(this.x, this.y, 0.2, p.x > this.x ? 1 : -1);
+      if (this.dying > 0.7 || this.y < -8) { lvl.burst(this.x, this.y, 8); this.remove(); } return 0;
+    }
+    this.t += dt; const x = this.bx + Math.sin(this.t * 0.6) * 5, y = this.by + Math.sin(this.t * 1.3) * 1.2, face = p.x > x ? 1 : -1; this.x = x; this.y = y;
+    if (this.d3) { this.d3.update(dt, this.cd < 0.5 ? 1 - this.cd / 0.5 : 0); this.d3.set(x, y, 0.2, face); }
+    else { this.m.position.set(x, y, 0); this.m.scale.x = face; this.wings.forEach((w, i) => w.rotation.x = Math.sin(this.t * 10) * 0.6 * (i ? 1 : -1)); }
     this.cd -= dt;
-    if (this.cd <= 0) { const dx = p.x - x, dy = p.y + 0.7 - y, d = Math.hypot(dx, dy) || 1; hz.spawn(x, y, dx / d * 9, dy / d * 9, 0.35); this.cd = 2.2; }
-    if (bul.hit(x, y, 1.1) && --this.hp <= 0) { this.alive = false; lvl.burst(x, y, 14); scene.remove(this.m); return 300; }
+    if (this.cd <= 0) { const o = this.d3 ? this.d3.muzzle() : new THREE.Vector3(x, y, 0), dx = p.x - o.x, dy = p.y + 0.7 - o.y, d = Math.hypot(dx, dy) || 1; hz.spawn(o.x, o.y, dx / d * 9, dy / d * 9, 0.35); this.cd = 2.2; }
+    if (bul.hit(x, y, 1.3)) { this.d3?.hit(); if (--this.hp <= 0) { lvl.burst(x, y, 14); if (this.d3) { this.dying = 1e-3; this.vy = 4; } else this.remove(); return 300; } }
     return 0;
   }
 }
 
-// Shield soldier: patrols, chases, slashes. Shield blocks shots from the front; shoot him from behind (or jump over).
+// Shield soldier / orc: patrols, chases, attacks. Has gravity: if the platform under him is shot away he falls (and re-anchors his patrol where he lands).
+// Soldier's shield blocks shots from the front; shoot him from behind (or jump over). The orc has no shield, more HP, and a slower, wider slam.
+export type FoeOpt = { cfg?: Cfg; hp?: number; speed?: number; reach?: number; hit?: [number, number]; dur?: number; shield?: boolean; score?: number; hitY?: number; hitR?: number };
 export class Soldier {
-  spr: AnimSprite | Enemy3D; hp = 4; dir = 1; alive = true; x: number; st: 'move' | 'slash' | 'dying' = 'move'; t = 0; guard = 0; hitDone = false;
-  constructor(scene: THREE.Scene, public x0: number, public y: number, public range = 3) { this.x = x0; this.spr = USE3D_ENEMY ? new Enemy3D(scene) : new AnimSprite(ENEMY, 'enemy', scene); }
+  spr: AnimSprite | Enemy3D; hp: number; dir = 1; alive = true; x: number; vy = 0; ground = true; turnCd = 0; st: 'move' | 'slash' | 'dying' = 'move'; t = 0; guard = 0; hitDone = false;
+  o: Required<Omit<FoeOpt, 'cfg'>>;
+  constructor(scene: THREE.Scene, public x0: number, public y: number, public range = 3, o: FoeOpt = {}) {
+    this.x = x0; this.o = { hp: 4, speed: 1.5, reach: 2.6, hit: [0.15, 0.4], dur: 0.55, shield: true, score: 200, hitY: 0.8, hitR: 0.75, ...o }; this.hp = this.o.hp;
+    this.spr = USE3D_ENEMY ? new Enemy3D(scene, o.cfg ?? SOLDIER) : new AnimSprite(ENEMY, 'enemy', scene);
+  }
+  private feet(lvl: Level) { const iy = Math.floor(this.y); return lvl.solid(Math.floor(this.x - 0.25), iy) || lvl.solid(Math.floor(this.x + 0.25), iy); }
   update(dt: number, p: Player, bul: Bullets, lvl: Level, scene: THREE.Scene) {
-    const dx = p.x - this.x, near = Math.abs(dx) < 7 && Math.abs(p.y - this.y) < 2.2; this.t += dt; this.guard -= dt;
-    if (this.st === 'dying') { this.spr.play('death', false); this.spr.update(dt); if (this.spr.done && this.t > 2.2) { scene.remove(this.spr.mesh); this.alive = false; } this.spr.set(this.x, this.y, 0.2, this.dir); return 0; }
-    if (bul.hit(this.x, this.y + 0.8, 0.75)) {
-      if (Math.sign(dx) === this.dir && this.st !== 'slash') this.guard = 0.25;               // blocked by shield
-      else if (--this.hp <= 0) { this.st = 'dying'; this.t = 0; lvl.burst(this.x, this.y + 0.8, 10); return 200; }
+    // gravity + landing (runs in every state, so a dying or slashing enemy also drops when his platform is destroyed)
+    this.vy = Math.max(this.vy - 42 * dt, -28); this.y += this.vy * dt;
+    if (this.vy <= 0 && this.feet(lvl)) { if (!this.ground && this.vy < -4) this.x0 = this.x; this.y = Math.floor(this.y) + 1; this.vy = 0; this.ground = true; } else this.ground = false;
+    if (this.y < -8) { scene.remove(this.spr.mesh); this.alive = false; return 0; }
+    const dx = p.x - this.x, near = Math.abs(dx) < 7 && Math.abs(p.y - this.y) < 2.2; this.t += dt; this.guard -= dt; this.turnCd -= dt;
+    if (this.st === 'dying') { this.spr.play('death', false); this.spr.update(dt); if (this.spr.done && this.t > (this.spr instanceof Enemy3D ? 0 : 2.2)) { scene.remove(this.spr.mesh); this.alive = false; } this.spr.set(this.x, this.y, 0.2, this.dir); return 0; }
+    if (bul.hit(this.x, this.y + this.o.hitY, this.o.hitR)) {
+      if (this.o.shield && Math.sign(dx) === this.dir && this.st !== 'slash') this.guard = 0.25;               // blocked by shield
+      else { this.spr.play('hurt'); if (--this.hp <= 0) { this.st = 'dying'; this.t = 0; lvl.burst(this.x, this.y + this.o.hitY, 10); return this.o.score; } }
     }
+    let moving = false;
     if (this.st === 'slash') {
-      this.spr.play('slash', false); if (this.t > 0.15 && this.t < 0.4 && !this.hitDone && Math.abs(dx) < 2.6 && Math.abs(p.y - this.y) < 1.8) { p.hurt(Math.sign(dx) || 1); this.hitDone = true; }
-      if (this.t > 0.55) { this.st = 'move'; this.t = 0; }
+      this.spr.play('slash', false); const [h0, h1] = this.o.hit;
+      if (this.t > h0 && this.t < h1 && !this.hitDone && Math.abs(dx) < this.o.reach && Math.abs(p.y - this.y) < 1.8) { p.hurt(Math.sign(dx) || 1); this.hitDone = true; }
+      if (this.t > this.o.dur) { this.st = 'move'; this.t = 0; }
     } else {
-      if (near) this.dir = Math.sign(dx) || this.dir;
-      if (near && Math.abs(dx) < 2.6) { this.st = 'slash'; this.t = 0; this.hitDone = false; }
-      else {
-        const sp = near ? 3.2 : 1.5, nx = this.x + this.dir * sp * dt;
+      if (near && Math.abs(dx) > 0.3) this.dir = Math.sign(dx);                    // dead-zone: no facing flicker when the player is right above/below
+      if (near && this.ground && Math.abs(dx) < this.o.reach) { this.st = 'slash'; this.t = 0; this.hitDone = false; }
+      else if (this.ground) {
+        const sp = near ? this.o.speed * 2.1 : this.o.speed, nx = this.x + this.dir * sp * dt;
         const floor = lvl.solid(Math.floor(nx + this.dir * 0.5), Math.floor(this.y - 0.2)), wall = lvl.solid(Math.floor(nx + this.dir * 0.6), Math.floor(this.y + 0.5));
-        if (floor && !wall) this.x = nx; else if (!near) this.dir = -this.dir;
-        if (!near && Math.abs(this.x - this.x0) > this.range) this.dir = Math.sign(this.x0 - this.x);
+        if (floor && !wall) { this.x = nx; moving = true; }
+        else if (!near && this.turnCd <= 0) { this.dir = -this.dir; this.turnCd = 0.6; }                        // turn at edge/wall once, then wait (was flipping every frame)
+        if (!near && this.turnCd <= 0 && Math.abs(this.x - this.x0) > this.range) this.dir = Math.sign(this.x0 - this.x) || this.dir;
       }
-      this.spr.play(this.guard > 0 ? 'shield' : near ? 'run' : 'walk');
+      this.spr.play(this.guard > 0 ? 'shield' : !this.ground ? 'idle' : moving ? (near ? 'run' : 'walk') : 'idle');
     }
     this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.dir); return 0;
   }
