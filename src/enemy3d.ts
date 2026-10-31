@@ -3,12 +3,17 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { aimBone } from './hero3d';
 // Rigged 3D ground enemies (one GLB per kind, cloned per enemy). Same interface as AnimSprite. Models natively face +x.
-export type Cfg = { url: string; h: number; map: Record<string, string>; runScale: number; slamClip?: string; slamScale: number; bob: boolean };
+export type Cfg = { url: string; h: number; map: Record<string, string>; runScale: number; slamClip?: string; slamScale: number; bob: boolean; extra?: { url: string; names: string[] }[] };
 export const SOLDIER: Cfg = { url: 'models/enemy.glb', h: 1.75, map: { idle: 'Idle', walk: 'Walk', run: 'Walk', shield: 'Idle', slash: 'Idle', hurt: 'Idle' }, runScale: 1.8, slamScale: 1, bob: false };
-// Orc (boss.glb: club in right hand, shield in left). Has no walk clip, so walking = Idle + procedural bob; attack = the Slam clip (impact ~0.8s in, sped up).
-export const ORC: Cfg = { url: 'models/boss.glb', h: 2.6, map: { idle: 'Idle', walk: 'Idle', run: 'Idle', shield: 'Idle', slash: 'Slam', hurt: 'Idle' }, runScale: 1.0, slamClip: 'Slam', slamScale: 1.6, bob: true };
+// Orc (orc.glb: axe is a separate prop parented to his left hand). It only ships an Idle clip, so Walk comes from enemy.glb and Slam from boss.glb:
+// every Tripo rig has the same bones and rest rotations, so those clips are reused by bone name (rotation tracks only; no root motion). Slam impact is ~0.8s in, sped up 1.6x.
+export const ORC: Cfg = { url: 'models/orc.glb', h: 2.3, map: { idle: 'Idle', walk: 'Walk', run: 'Walk', shield: 'Idle', slash: 'Slam', hurt: 'Idle' }, runScale: 1.5, slamClip: 'Slam', slamScale: 1.6, bob: false,
+  extra: [{ url: 'models/enemy.glb', names: ['Walk'] }, { url: 'models/boss.glb', names: ['Slam'] }] };
 const shared = new Map<string, Promise<{ g: GLTF; s: number; y: number }>>();
-const loadShared = (c: Cfg) => { let p = shared.get(c.url); if (!p) { p = new GLTFLoader().loadAsync(c.url).then(g => { const bb = new THREE.Box3().setFromObject(g.scene), s = c.h / (bb.max.y - bb.min.y); return { g, s, y: -bb.min.y * s }; }); shared.set(c.url, p); } return p; };
+const loadShared = (c: Cfg) => { let p = shared.get(c.url); if (!p) { const L = new GLTFLoader();
+  p = Promise.all([L.loadAsync(c.url), ...(c.extra ?? []).map(e => L.loadAsync(e.url))]).then(([g, ...ex]) => {
+    (c.extra ?? []).forEach((e, i) => { for (const clip of ex[i].animations) if (e.names.includes(clip.name)) g.animations.push(new THREE.AnimationClip(clip.name, clip.duration, clip.tracks.filter(t => t.name.endsWith('.quaternion')))); });
+    const bb = new THREE.Box3().setFromObject(g.scene), s = c.h / (bb.max.y - bb.min.y); return { g, s, y: -bb.min.y * s }; }); shared.set(c.url, p); } return p; };
 const DIE = 0.35, HOLD = 0.25, SHRINK = 0.25;                       // fall over, lie there, vanish: 0.85s total (was ~2.2s)
 const ease = (k: number) => 1 - (1 - k) * (1 - k);
 export class Enemy3D {

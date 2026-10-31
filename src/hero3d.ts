@@ -30,7 +30,7 @@ export class Hero3D {
     this.mesh.add(this.fall); scene.add(this.mesh); this.loadGun(scene);
     new GLTFLoader().load(url, g => {
       const m = g.scene; m.scale.setScalar(0.9); this.fall.add(m); this.model = m;
-      for (const n of ['RightArm', 'RightForeArm', 'RightHand', 'LeftArm', 'LeftForeArm', 'LeftHand']) { const b = m.getObjectByName(n); if (b) this.bones[n] = b; }
+      for (const n of ['Spine2', 'RightArm', 'RightForeArm', 'RightHand', 'LeftArm', 'LeftForeArm', 'LeftHand']) { const b = m.getObjectByName(n); if (b) this.bones[n] = b; }
       m.traverse(o => {
         const me = o as THREE.Mesh; if (!me.isMesh) return; me.frustumCulled = false;
         const mt = me.material as THREE.MeshStandardMaterial; mt.metalness = 0; mt.roughness = 0.85;
