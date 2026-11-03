@@ -5,7 +5,7 @@ import { AnimSprite } from './anim';
 import { Hero3D } from './hero3d';
 import { HERO } from './sprites';
 const USE3D = new URLSearchParams(location.search).get('hero') !== '2d'; // 3D is the default; /?hero=2d falls back to the sprite hero
-const G = -42, JUMP = 15, RUN = 7.5, W = 0.7, H = 1.3;
+const G = -42, JUMP = 18, JUMP2 = 16, RUN = 7.5, W = 0.7, H = 1.3;
 export class Bullets {
   list: { m: THREE.Mesh; vx: number; life: number }[] = [];
   constructor(scene: THREE.Scene) {
@@ -29,7 +29,7 @@ export class Bullets {
   }
 }
 export class Player {
-  spr: AnimSprite | Hero3D; x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; face = 1; hp = 5; inv = 0; cd = 0;
+  spr: AnimSprite | Hero3D; x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; air = 1; face = 1; hp = 5; inv = 0; cd = 0;
   constructor(scene: THREE.Scene) { this.spr = USE3D ? new Hero3D(scene) : new AnimSprite(HERO, 'hero', scene); }
   animOnly(dt: number, lvl: Level) {            // game over: keep falling to the floor, always visible, no flicker
     this.vx = 0; this.vy = Math.max(this.vy + G * dt, -28); this.y += this.vy * dt; this.collide(lvl, false);
@@ -41,14 +41,16 @@ export class Player {
     const target = inp.x * RUN; this.vx += (target - this.vx) * Math.min(1, (this.ground ? 16 : 9) * dt);
     if (inp.x) this.face = inp.x;
     this.coyote = this.ground ? 0.1 : this.coyote - dt; this.buf = inp.jumpDown ? 0.12 : this.buf - dt;
+    if (this.ground) this.air = 1;                                                       // one extra jump, refilled on landing
     if (this.buf > 0 && this.coyote > 0) { this.vy = JUMP; this.buf = 0; this.coyote = 0; }
+    else if (this.buf > 0 && this.air > 0 && !this.ground) { this.vy = JUMP2; this.buf = 0; this.air = 0; }   // double jump
     if (!inp.jump && this.vy > 0) this.vy -= this.vy * Math.min(1, 12 * dt); // variable jump height
     this.vy = Math.max(this.vy + G * dt, -28);
     this.x += this.vx * dt; this.collide(lvl, true);
     this.y += this.vy * dt; this.ground = false; this.collide(lvl, false);
     if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face); this.cd = 0.16; }
     const run = Math.abs(this.vx) > 0.8;
-    const clip = this.inv > 0.95 ? 'hurt' : !this.ground ? 'jump' : inp.fire ? (run ? 'shootRun' : 'shootStand') : run ? 'run' : 'idle';
+    const clip = this.inv > 0.95 ? 'hurt' : !this.ground ? (inp.fire ? 'shootAir' : 'jump') : inp.fire ? (run ? 'shootRun' : 'shootStand') : run ? 'run' : 'idle';
     this.spr.play(clip); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
     this.spr.mesh.visible = this.inv <= 0 || this.inv > 0.95 || Math.floor(this.inv * 14) % 2 === 0;
   }

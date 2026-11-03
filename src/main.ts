@@ -3,8 +3,8 @@ import { makeComposer } from './grade';
 import { poll, isTouch } from './input';
 import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
-import { Soldier, Dragon, Boss, Hazards, Saw } from './foes';
-import { ORC } from './enemy3d';
+import { Soldier, Dragon, Boss, Hazards, Saw, CLUB_OPT, CLUB_ELITE } from './foes';
+import { fx } from './fx';
 
 const LEVEL = Number(new URLSearchParams(location.search).get('level') ?? 1); // ?level=2 → dragons
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -17,19 +17,21 @@ const sun = new THREE.DirectionalLight(0xffe2b0, 2.6); sun.castShadow = true; su
 Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 16, bottom: -16, near: 1, far: 60 }); scene.add(sun, sun.target);
 scene.add(new THREE.HemisphereLight(0x9fd9ff, 0x5a7a3a, 1.1));
 const comp = makeComposer(renderer, scene, cam, isTouch);
+fx.init(scene);
 function resize() { renderer.setSize(innerWidth, innerHeight); comp.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
 const lvl = new Level(scene, [[0, 0, 20, 2], [24, 0, 14, 2], [42, 0, 12, 2], [58, 0, 40, 2], [8, 5, 4, 1], [16, 8, 4, 1], [27, 5, 5, 1], [34, 8, 4, 1], [44, 5, 5, 1], [50, 8, 3, 1], [31, 2, 2, 4], [62, 2, 1, 3] , [10, 2, 2, 2], [19, 2, 1, 3], [46, 2, 2, 2], [52, 2, 1, 3], [66, 2, 3, 2], [72, 2, 1, 4]]);
 const player = new Player(scene), bul = new Bullets(scene), hz = new Hazards(scene);
-const drones = [[6, 2, 2], [15, 2, 2], [28, 2, 2.5], [35.5, 2, 1.5], [50, 2, 2], [9.5, 6, 1.5], [28.5, 6, 2], [45.5, 6, 2]].map(([x, y, r]) => new Soldier(scene, x, y, r));
-const orcs = LEVEL >= 2 ? [[30, 2, 3], [48, 2, 2.5], [68, 2, 3]].map(([x, y, r]) => new Soldier(scene, x, y, r, { cfg: ORC, hp: 8, speed: 1.3, reach: 3, hit: [0.4, 0.7], dur: 1.4, shield: false, score: 400, hitY: 1.1, hitR: 1.0 })) : [];
-const dragons = LEVEL >= 2 ? [[22, 9], [40, 10], [56, 9]].map(([x, y]) => new Dragon(scene, x, y)) : [];
+const drones = [[6, 2, 2], [15, 2, 2], [28, 2, 2.5], [35.5, 2, 1.5], [50, 2, 2], [9.5, 6, 1.5], [28.5, 6, 2], [45.5, 6, 2]].map(([x, y, r]) => new Soldier(scene, x, y, r, CLUB_OPT));
+const orcs = LEVEL >= 2 ? [[30, 2, 3], [48, 2, 2.5], [68, 2, 3]].map(([x, y, r]) => new Soldier(scene, x, y, r, CLUB_ELITE)) : [];
+const dragons = LEVEL >= 2 ? [[22, 9], [40, 10], [56, 9]].map(([x, y], i) => new Dragon(scene, x, y, i % 2)) : [];   // alternate green / purple
 const saws = [[14.5, 2.9, 1.8], [27.5, 2.9, 1.8], [50, 2.9, 1.5], [76, 2.9, 1.5]].map(([x, y, rx]) => new Saw(scene, x, y, rx));
 const boss = new Boss(scene, 88, 2);
 let score = 0, over = false;
 const $ = (id: string) => document.getElementById(id)!;
 const msg = (t: string) => { $('msg').style.display = 'flex'; $('msg').innerHTML = '<div>' + t + '</div>'; };
+let camX = 2, camY = 5;
 const clock = new THREE.Clock();
 (function loop() {
   requestAnimationFrame(loop);
@@ -49,9 +51,10 @@ const clock = new THREE.Clock();
   ($('hp').firstChild as HTMLElement).style.width = Math.max(0, player.hp / 5 * 100) + '%';
   ($('boss').firstChild as HTMLElement).style.width = (boss.shieldHp > 0 ? boss.shieldHp / 14 * 50 + 50 : boss.hp / 30 * 50) + '%';
   $('score').textContent = String(score);
-  cam.position.x += (player.x + player.face * 2.5 - cam.position.x) * Math.min(1, 4 * dt);
-  cam.position.y += (Math.max(4.5, player.y + 2.5) - cam.position.y) * Math.min(1, 3 * dt);
-  cam.lookAt(cam.position.x, cam.position.y - 0.5, 0);
+  camX += (player.x + player.face * 2.5 - camX) * Math.min(1, 4 * dt);
+  camY += (Math.max(4.5, player.y + 2.5) - camY) * Math.min(1, 3 * dt);
+  fx.focusX = player.x; const sh = fx.update(dt);                  // particles + camera shake (offset is added after smoothing so it never feeds back)
+  cam.position.set(camX + sh.x, camY + sh.y, 17); cam.lookAt(camX + sh.x, camY - 0.5 + sh.y, 0);
   sun.position.set(player.x + 12, 24, 14); sun.target.position.set(player.x, 4, 0);
   comp.render(dt);
 })();
