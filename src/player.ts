@@ -7,18 +7,18 @@ import { HERO } from './sprites';
 const USE3D = new URLSearchParams(location.search).get('hero') !== '2d'; // 3D is the default; /?hero=2d falls back to the sprite hero
 const G = -42, JUMP = 18, JUMP2 = 16, RUN = 7.5, W = 0.7, H = 1.3;
 export class Bullets {
-  list: { m: THREE.Mesh; vx: number; life: number }[] = [];
+  list: { m: THREE.Mesh; vx: number; vy: number; life: number }[] = [];
   constructor(scene: THREE.Scene) {
     const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 0.6), toneMapped: false });
-    for (let i = 0; i < 40; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, 0.1), mat); m.visible = false; scene.add(m); this.list.push({ m, vx: 0, life: 0 }); }
+    for (let i = 0; i < 40; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.1, 0.1), mat); m.visible = false; scene.add(m); this.list.push({ m, vx: 0, vy: 0, life: 0 }); }
   }
-  spawn(x: number, y: number, dir: number) {
+  spawn(x: number, y: number, dir: number, ang = 0) {            // ang = aim angle in radians, + = up (relative to facing)
     const b = this.list.find(b => b.life <= 0); if (!b) return;
-    b.life = 1.1; b.vx = dir * 24; b.m.visible = true; b.m.position.set(x, y, 0);
+    b.life = 1.1; b.vx = dir * 24 * Math.cos(ang); b.vy = 24 * Math.sin(ang); b.m.visible = true; b.m.position.set(x, y, 0); b.m.rotation.z = Math.atan2(b.vy, b.vx);
   }
   update(dt: number, lvl: Level) {
     for (const b of this.list) {
-      if (b.life <= 0) continue; b.life -= dt; b.m.position.x += b.vx * dt;
+      if (b.life <= 0) continue; b.life -= dt; b.m.position.x += b.vx * dt; b.m.position.y += b.vy * dt;
       if (lvl.destroy(Math.floor(b.m.position.x), Math.floor(b.m.position.y)) || lvl.solid(Math.floor(b.m.position.x), Math.floor(b.m.position.y))) b.life = 0;
       if (b.life <= 0) b.m.visible = false;
     }
@@ -29,7 +29,7 @@ export class Bullets {
   }
 }
 export class Player {
-  spr: AnimSprite | Hero3D; x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; air = 1; face = 1; hp = 5; inv = 0; cd = 0;
+  spr: AnimSprite | Hero3D; x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; air = 1; face = 1; aim = 0; hp = 5; inv = 0; cd = 0;
   constructor(scene: THREE.Scene) { this.spr = USE3D ? new Hero3D(scene) : new AnimSprite(HERO, 'hero', scene); }
   animOnly(dt: number, lvl: Level) {            // game over: keep falling to the floor, always visible, no flicker
     this.vx = 0; this.vy = Math.max(this.vy + G * dt, -28); this.y += this.vy * dt; this.collide(lvl, false);
@@ -48,7 +48,11 @@ export class Player {
     this.vy = Math.max(this.vy + G * dt, -28);
     this.x += this.vx * dt; this.collide(lvl, true);
     this.y += this.vy * dt; this.ground = false; this.collide(lvl, false);
-    if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face); this.cd = 0.16; }
+    // aim: up = 45 deg when moving / 90 straight up; down = 45 deg on the ground or while moving, 90 straight down when airborne and standing still
+    const ay = (inp.up ? 1 : 0) - (inp.down ? 1 : 0), moving = inp.x !== 0;
+    this.aim = ay === 0 ? 0 : ay > 0 ? (moving ? Math.PI / 4 : Math.PI / 2) : (moving || this.ground ? -Math.PI / 4 : -Math.PI / 2);
+    if (this.spr instanceof Hero3D) this.spr.aim = this.aim;
+    if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face, this.aim); this.cd = 0.16; }
     const run = Math.abs(this.vx) > 0.8;
     const clip = this.inv > 0.95 ? 'hurt' : !this.ground ? (inp.fire ? 'shootAir' : 'jump') : inp.fire ? (run ? 'shootRun' : 'shootStand') : run ? 'run' : 'idle';
     this.spr.play(clip); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);

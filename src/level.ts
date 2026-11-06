@@ -11,7 +11,7 @@ type Part = { m: THREE.InstancedMesh; i: number };
 export class Level {
   tiles = new Set<string>(); parts = new Map<string, Part[]>(); deb: Deb[] = [];
   body: THREE.InstancedMesh; cap: THREE.InstancedMesh;
-  constructor(public scene: THREE.Scene, rects: number[][]) {
+  constructor(public scene: THREE.Scene, rects: number[][], public len = 110) {
     for (const [x, y, w, h] of rects) for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) this.tiles.add(`${x + i},${y + j}`);
     const all = [...this.tiles].map(k => k.split(',').map(Number)), top = ([x, y]: number[]) => !this.tiles.has(`${x},${y + 1}`), bottom = ([x, y]: number[]) => !this.tiles.has(`${x},${y - 1}`);
     const M = new THREE.Matrix4(), add = (k: string, p: Part) => (this.parts.get(k) ?? this.parts.set(k, []).get(k)!).push(p);
@@ -62,7 +62,7 @@ export class Level {
     // far hazy giant trees: 3 layers, farther = lighter. Not fogged on purpose (they should read as a bluish shadow)
     for (let L = 0; L < 3; L++) {
       const z = -24 - L * 14, col = [0x78b2da, 0x92c4e4, 0xaed6ee][L], op = [0.5, 0.42, 0.35][L], list: { x: number; y: number; s: number }[] = [];
-      for (let x = -50 - L * 8; x < 160; x += 22 + L * 4 + rnd() * 6) list.push({ x, y: 4 + rnd() * 7, s: 16 + rnd() * 10 });
+      for (let x = -50 - L * 8; x < this.len + 60; x += 22 + L * 4 + rnd() * 6) list.push({ x, y: 4 + rnd() * 7, s: 16 + rnd() * 10 });
       const mk = (map: boolean) => new THREE.MeshBasicMaterial({ map: map ? tex('silhouette') : null, color: col, transparent: true, opacity: op, depthWrite: false, fog: false, alphaTest: map ? 0.02 : 0 });
       const crowns = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1.04), mk(true), list.length), stems = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mk(false), list.length);
       list.forEach((t, i) => {
@@ -72,10 +72,10 @@ export class Level {
       crowns.renderOrder = stems.renderOrder = -20 + L * -1; S.add(stems, crowns);
     }
     // mid layers: real textured trees standing on floating rocks (so nothing floats), slightly hazed by scene fog
-    for (let x = -6; x < 105; x += 6.5) { const z = -5 - rnd() * 5, pink = rnd() < 0.4; tree(x + rnd() * 3, -1.5 + rnd() * 2, z, 3 + rnd() * 3, 3.2 + rnd() * 2.2, pink, true); }
-    for (let x = -10; x < 110; x += 10) { const z = -14 - rnd() * 4, pink = rnd() < 0.5; tree(x + rnd() * 4, 1 + rnd() * 4, z, 4 + rnd() * 3, 5 + rnd() * 2.5, pink, true); }
+    for (let x = -6; x < this.len + 5; x += 6.5) { const z = -5 - rnd() * 5, pink = rnd() < 0.4; tree(x + rnd() * 3, -1.5 + rnd() * 2, z, 3 + rnd() * 3, 3.2 + rnd() * 2.2, pink, true); }
+    for (let x = -10; x < this.len + 10; x += 10) { const z = -14 - rnd() * 4, pink = rnd() < 0.5; tree(x + rnd() * 4, 1 + rnd() * 4, z, 4 + rnd() * 3, 5 + rnd() * 2.5, pink, true); }
     tops.forEach(([x, y], i) => {
-      if (i % 7 === 3 && x > 3 && x < 76) tree(x + 0.5, y + 1, -1.4, 0.8 + rnd() * 1.5, 1.6 + rnd() * 0.9, rnd() < 0.3);
+      if (i % 7 === 3 && x > 3 && x < this.len - 55) tree(x + 0.5, y + 1, -1.4, 0.8 + rnd() * 1.5, 1.6 + rnd() * 0.9, rnd() < 0.3);
       if (i % 5 === 1) bushes.push({ p: new THREE.Vector3(x + 0.5, y + 1.4, -0.9), s: 1.1 + rnd() * 0.4, pink: false });
     });
     for (const pink of [false, true]) {
@@ -89,8 +89,8 @@ export class Level {
     // mist bank: vertical gradient (clear at top, milky at bottom) hides the bottoms of rocks and the void under the level
     const N = 64, d = new Uint8Array(N * 4); for (let i = 0; i < N; i++) { const a = Math.pow(1 - i / (N - 1), 1.4); d.set([205, 236, 248, Math.round(a * 235)], i * 4); }
     const gt = new THREE.DataTexture(d, 1, N); gt.colorSpace = THREE.SRGBColorSpace; gt.magFilter = gt.minFilter = THREE.LinearFilter; gt.needsUpdate = true;
-    const mist = new THREE.Mesh(new THREE.PlaneGeometry(320, 22), new THREE.MeshBasicMaterial({ map: gt, transparent: true, depthWrite: false, fog: false }));
-    mist.position.set(50, -3, -3.2); mist.renderOrder = -5; S.add(mist);
+    const mist = new THREE.Mesh(new THREE.PlaneGeometry(this.len + 300, 22), new THREE.MeshBasicMaterial({ map: gt, transparent: true, depthWrite: false, fog: false }));
+    mist.position.set(this.len / 2, -3, -3.2); mist.renderOrder = -5; S.add(mist);
   }
   solid(ix: number, iy: number) { return this.tiles.has(`${ix},${iy}`); }
   destroy(ix: number, iy: number) {

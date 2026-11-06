@@ -2,10 +2,15 @@ import * as THREE from 'three';
 // Tiny shared effects layer: pooled additive sparks/dust (one draw call), expanding shockwave rings, and camera trauma/shake.
 // Usage: fx.init(scene) once; fx.burst()/fx.impact()/fx.dust() anywhere; fx.update(dt) every frame (returns the camera offset).
 const N = 700, RINGS = 6;
+/** CAMERA SHAKE STRENGTH: 1 = current. 1.5 = 50% stronger, 0.5 = half. Multiplies every shake in the game (fireballs, monster slams). */
+export const SHAKE_SCALE = 1.5;
+/** Biggest camera offset (world units) at full trauma, before SHAKE_SCALE. */
+const SHAKE_MAX = 0.55;
 const round = () => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d')!, r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,.7)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); };
 
 class Fx {
+  scale = SHAKE_SCALE;                                                 // runtime shake strength (set from the Settings menu)
   focusX = 0;                                                         // player x: far-away impacts shake the camera less
   private trauma = 0; private i = 0; private ready = false;
   private pos = new Float32Array(N * 3); private col = new Float32Array(N * 3); private vel = new Float32Array(N * 3);
@@ -50,7 +55,7 @@ class Fx {
     (this.geo.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.geo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
     for (const r of this.rings) { if (!r.m.visible) continue; r.t += dt / 0.35; if (r.t >= 1) { r.m.visible = false; continue; }
       const s = 0.3 + r.t * 1.9; r.m.scale.set(s, s, 1); (r.m.material as THREE.MeshBasicMaterial).color.copy(r.c).multiplyScalar(1 - r.t); }
-    this.trauma = Math.max(0, this.trauma - dt * 1.8); const m = this.trauma * this.trauma * 0.55;
+    this.trauma = Math.max(0, this.trauma - dt * 1.8); const m = this.trauma * this.trauma * SHAKE_MAX * this.scale;
     return { x: (Math.random() * 2 - 1) * m, y: (Math.random() * 2 - 1) * m };
   }
 }

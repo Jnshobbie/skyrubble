@@ -7,9 +7,9 @@ export type Cfg = { url: string; h: number; map: Record<string, string>; runScal
 export const SOLDIER: Cfg = { url: 'models/enemy.glb', h: 1.75, map: { idle: 'Idle', walk: 'Walk', run: 'Walk', shield: 'Idle', slash: 'Idle', hurt: 'Idle' }, runScale: 1.8, bob: false };
 // Club monster (Orc_Skull from ultimate_monsters_pack.glb, extracted to its own file by tools/bake). Clips: Idle (pack's 1s loop), plus Slam and JumpSlam = the old gorilla boss's
 // Standing_Melee_Attack_Downward / Mutant_Jump_Attack, retargeted onto this rig. `once` = clips that play a single time, with their speed-up (Slam 2.27s -> 1.62s, JumpSlam 3.7s -> 2.31s).
-// There is no walk clip, so walking = the idle loop sped up plus a body bob.
-const CLUB_MAP = { idle: 'Idle', walk: 'Idle', run: 'Idle', shield: 'Idle', slash: 'Slam', jump: 'JumpSlam', hurt: 'Idle' };
-export const CLUB: Cfg = { url: 'models/orc_skull.glb', h: 2.3, map: CLUB_MAP, runScale: 2.4, walkScale: 1.6, once: { Slam: 1.4, JumpSlam: 1.6 }, bob: true };
+// Walk = Walking.fbx retargeted (in place: root motion stripped, feet tied to the retargeted legs).
+const CLUB_MAP = { idle: 'Idle', walk: 'Walk', run: 'Walk', shield: 'Idle', slash: 'Slam', jump: 'JumpSlam', hurt: 'Idle' };
+export const CLUB: Cfg = { url: 'models/orc_skull.glb', h: 2.3, map: CLUB_MAP, runScale: 2.6, walkScale: 1.24, once: { Slam: 1.4, JumpSlam: 1.6 }, bob: false };   // Walk loop covers ~1.2 world units/s at x1: x1.24 = patrol speed 1.5, x2.6 = chase speed 3.15 (no foot sliding)
 export const CLUB_BIG: Cfg = { ...CLUB, h: 3.0 };
 const shared = new Map<string, Promise<{ g: GLTF; bb: THREE.Box3 }>>();
 const loadShared = (c: Cfg) => { let p = shared.get(c.url); if (!p) { const L = new GLTFLoader();

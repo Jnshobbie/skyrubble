@@ -9,6 +9,12 @@ export function aimBone(bone: THREE.Object3D, child: THREE.Object3D, target: THR
   bone.parent!.getWorldQuaternion(_q3); _q3.invert().multiply(_q1);                                   // -> local space
   bone.quaternion.slerp(_q3, w); bone.updateMatrixWorld(true);
 }
+const _Z = new THREE.Vector3(0, 0, 1);
+/** Rotate a bone about the WORLD Z axis by `ang` radians (about its own joint); children follow. Call after the mixer has posed the skeleton. */
+function pitchBone(b: THREE.Object3D, ang: number) {
+  b.updateWorldMatrix(true, false); b.getWorldQuaternion(_q1).premultiply(_q2.setFromAxisAngle(_Z, ang));
+  b.quaternion.copy(b.parent!.getWorldQuaternion(_q3).invert().multiply(_q1)); b.updateMatrixWorld(true);
+}
 const _P = (o: THREE.Object3D) => o.getWorldPosition(new THREE.Vector3());
 /** Two-bone IK: put `hand` at T by bending the arm toward `pole`. Axis-independent (uses aimBone). */
 export function reach(up: THREE.Object3D, fore: THREE.Object3D, hand: THREE.Object3D, T: THREE.Vector3, pole: THREE.Vector3, w: number) {
@@ -34,6 +40,7 @@ export class Hero3D {
   private lo: Record<string, THREE.AnimationAction> = {}; private up: Record<string, THREE.AnimationAction> = {}; private curLo = ''; private curUp = '';
   private want = 'idle'; private yaw = 0; private deadT = 0; private flash = 0; private aimW = 0;
   private mats: { m: THREE.MeshStandardMaterial; e: THREE.Color }[] = [];
+  aim = 0; private aimCur = 0; private rig?: { spine: THREE.Object3D[]; neck?: THREE.Object3D; arms: THREE.Object3D[] };
   private prep(root: THREE.Object3D) {                    // Mixamo/Sketchfab materials are metallic -> black without an env map; make them plain lit
     root.traverse(o => {
       const me = o as THREE.Mesh; if (!me.isMesh) return; me.frustumCulled = false;
@@ -48,6 +55,8 @@ export class Hero3D {
     new GLTFLoader().load(url, g => {
       const m = g.scene; m.rotation.y = Math.PI / 2; this.fall.add(m); this.model = m;   // +z (model front) -> +x (game forward)
       let hand: THREE.Object3D | undefined; m.traverse(o => { if (o.name === 'mixamorigRightHand') hand = o; });
+      const by = (n: string) => m.getObjectByName(n) as THREE.Object3D | undefined, all = (l: string[]) => l.map(by).filter(Boolean) as THREE.Object3D[];
+      this.rig = { spine: all(['mixamorigSpine', 'mixamorigSpine1', 'mixamorigSpine2']), neck: by('mixamorigNeck'), arms: all(['mixamorigRightArm', 'mixamorigLeftArm']) };
       this.prep(m);
       this.mixer = new THREE.AnimationMixer(m);
       const split = (c: THREE.AnimationClip, lower: boolean) => new THREE.AnimationClip(c.name + (lower ? '_lo' : '_up'), c.duration,
@@ -85,6 +94,16 @@ export class Hero3D {
   update(dt: number) {
     const want = this.want.startsWith('shoot') && !this.deadT ? 1 : 0; this.aimW += (want - this.aimW) * Math.min(1, dt * 14);
     this.mixer?.update(dt);
+    // aim up/down: mostly the ARMS raise/lower about the shoulders (rotation about the world Z axis = the game plane's normal), the spine only leans a little
+    // (30%) and the neck cancels part of that so the head stays level. Rotating the whole spine for the full angle laid the torso flat -> the "flip". cos(yaw) keeps it
+    // continuous while turning (facing left = rotate the other way).
+    this.aimCur += (this.aim * want - this.aimCur) * Math.min(1, dt * 16);
+    if (Math.abs(this.aimCur) > 0.01 && this.rig) {
+      const A = this.aimCur * Math.cos(this.yaw), lean = A * 0.3, spine = this.rig.spine;
+      for (const b of spine) pitchBone(b, lean / spine.length);
+      if (this.rig.neck) pitchBone(this.rig.neck, -lean * 0.6);
+      for (const arm of this.rig.arms) pitchBone(arm, A * 0.7);
+    }
     if (this.deadT) { this.deadT += dt; const k = Math.min(1, this.deadT / 0.5); this.fall.rotation.z = k * Math.PI / 2; this.fall.position.y = 0.2 * k; if (this.mixer) this.mixer.timeScale = 1 - k; }
     this.flash -= dt; const f = this.flash > 0; for (const { m, e } of this.mats) m.emissive.setRGB(f ? 0.9 : e.r, f ? 0.1 : e.g, f ? 0.1 : e.b);
   }

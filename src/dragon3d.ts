@@ -3,20 +3,22 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 // Little bat-dragon (Goleling from ultimate_monsters_pack.glb, extracted to models/goleling.glb: faces +x, wings along z, ships a 1s wing-flap "Idle" loop).
 // variant 0 = green (the model's own colours), 1 = purple (body + wing membrane recoloured). Each carries its own fireball colour (HDR, so it blooms).
-const WINGSPAN = 2.8;
-const VARIANTS = [
-  { fire: new THREE.Color(0.5, 3.2, 0.6), body: null as THREE.Color | null, wing: null as THREE.Color | null },
-  { fire: new THREE.Color(2.4, 0.5, 3.8), body: new THREE.Color(0.2, 0.05, 0.42), wing: new THREE.Color(0.5, 0.05, 0.3) },
+// variant 2 = Dragon_Fly (orange-red, own model, a bit bigger).
+type V = { url: string; span: number; fire: THREE.Color; body: THREE.Color | null; wing: THREE.Color | null };
+export const VARIANTS: V[] = [
+  { url: 'models/goleling.glb', span: 2.8, fire: new THREE.Color(0.5, 3.2, 0.6), body: null, wing: null },
+  { url: 'models/goleling.glb', span: 2.8, fire: new THREE.Color(2.4, 0.5, 3.8), body: new THREE.Color(0.2, 0.05, 0.42), wing: new THREE.Color(0.5, 0.05, 0.3) },
+  { url: 'models/dragonfly.glb', span: 3.3, fire: new THREE.Color(4, 1.3, 0.2), body: null, wing: null },
 ];
-let shared: Promise<{ g: GLTF; bb: THREE.Box3 }> | null = null;
-const loadShared = () => (shared ??= new GLTFLoader().loadAsync('models/goleling.glb').then(g => { g.scene.updateMatrixWorld(true); return { g, bb: new THREE.Box3().setFromObject(g.scene) }; }));
+const shared = new Map<string, Promise<{ g: GLTF; bb: THREE.Box3 }>>();
+const loadShared = (url: string) => { let p = shared.get(url); if (!p) shared.set(url, p = new GLTFLoader().loadAsync(url).then(g => { g.scene.updateMatrixWorld(true); return { g, bb: new THREE.Box3().setFromObject(g.scene) }; })); return p; };
 export class Dragon3D {
   mesh = new THREE.Group(); private inner = new THREE.Group(); private mixer?: THREE.AnimationMixer; private flat: { m: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
   private yaw = 0; private t = Math.random() * 6; private flash = 0; private spin = 0; mouth = new THREE.Vector3(0.9, 0, 0); fire: THREE.Color;
   constructor(scene: THREE.Scene, variant = 0) {
     const v = VARIANTS[variant % VARIANTS.length]; this.fire = v.fire.clone(); this.mesh.add(this.inner); scene.add(this.mesh);
-    loadShared().then(({ g, bb }) => {
-      const s = WINGSPAN / (bb.max.z - bb.min.z), m = clone(g.scene); m.scale.setScalar(s); m.position.set(-(bb.max.x + bb.min.x) / 2 * s, -(bb.max.y + bb.min.y) / 2 * s, 0); this.inner.add(m);   // centre the model on the group origin
+    loadShared(v.url).then(({ g, bb }) => {
+      const s = v.span / (bb.max.z - bb.min.z), m = clone(g.scene); m.scale.setScalar(s); m.position.set(-(bb.max.x + bb.min.x) / 2 * s, -(bb.max.y + bb.min.y) / 2 * s, 0); this.inner.add(m);   // centre the model on the group origin
       this.mouth.set((bb.max.x - bb.min.x) / 2 * s * 0.9, 0, 0);
       m.traverse(o => {
         const me = o as THREE.Mesh; if (!me.isMesh) return; me.frustumCulled = false;

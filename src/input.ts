@@ -1,11 +1,11 @@
 // Unified input: keyboard (PC) + on-screen buttons (mobile). Replace the touch part with HollowSky's scheme if it differs.
-export const inp = { x: 0, jump: false, jumpDown: false, fire: false };
+export const inp = { x: 0, jump: false, jumpDown: false, fire: false, up: false, down: false };   // up/down = aim up / aim down (E or I / S or ArrowDown / touch ▲ ▼)
 export const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const keys = new Set<string>();
-const touch = { l: false, r: false, j: false, f: false };
+const touch = { l: false, r: false, j: false, f: false, u: false, d: false };
 addEventListener('keydown', e => { keys.add(e.code); if (e.code === 'KeyR') location.reload(); });
 addEventListener('keyup', e => keys.delete(e.code));
-addEventListener('mousedown', () => keys.add('Mouse'));
+addEventListener('mousedown', e => { if (!(e.target as HTMLElement).closest('#menu,#pausebtn')) keys.add('Mouse'); });
 addEventListener('mouseup', () => keys.delete('Mouse'));
 function bind(id: string, k: keyof typeof touch) {
   const el = document.getElementById(id)!;
@@ -14,7 +14,7 @@ function bind(id: string, k: keyof typeof touch) {
   el.addEventListener('touchend', set(false), { passive: false });
   el.addEventListener('touchcancel', set(false));
 }
-if (isTouch) { document.getElementById('touch')!.style.display = 'block'; bind('bl', 'l'); bind('br', 'r'); bind('bj', 'j'); bind('bf', 'f'); }
+if (isTouch) { document.getElementById('touch')!.style.display = 'block'; bind('bl', 'l'); bind('br', 'r'); bind('bj', 'j'); bind('bf', 'f'); bind('bu', 'u'); bind('bd', 'd'); }
 let prevJump = false;
 export function poll() {
   const l = keys.has('KeyA') || keys.has('ArrowLeft') || touch.l;
@@ -22,5 +22,6 @@ export function poll() {
   inp.x = (r ? 1 : 0) - (l ? 1 : 0);
   inp.jump = keys.has('Space') || keys.has('KeyW') || keys.has('ArrowUp') || touch.j;
   inp.jumpDown = inp.jump && !prevJump; prevJump = inp.jump;
+  inp.up = keys.has('KeyE') || keys.has('KeyI') || touch.u; inp.down = keys.has('KeyS') || keys.has('ArrowDown') || touch.d;
   inp.fire = keys.has('KeyJ') || keys.has('KeyK') || keys.has('Mouse') || touch.f;
 }

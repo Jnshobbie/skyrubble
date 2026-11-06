@@ -53,9 +53,10 @@ export class Drone {
 
 // Level 2: flying dragon that throws fireballs (3D model by default; the old primitive dragon remains for ?enemy=2d)
 export class Dragon {
-  m = new THREE.Group(); hp = 5; t = Math.random() * 6; cd = 1.5; alive = true; wings: THREE.Mesh[] = []; d3?: Dragon3D; dying = 0; vy = 0; x = 0; y = 0;
+  m = new THREE.Group(); hp = 5; t = Math.random() * 6; cd = 1.5; alive = true; wings: THREE.Mesh[] = []; d3?: Dragon3D; dying = 0; vy = 0; x = 0; y = 0; cy: number; tier: number;
+  // tier = dragon type: 0 green (1 shot), 1 purple (2-shot spread, faster), 2 orange (3-shot spread, fastest, tougher)
   constructor(public scene: THREE.Scene, public bx: number, public by: number, variant = 0) {
-    this.x = bx; this.y = by;
+    this.x = bx; this.y = by; this.cy = by; this.tier = variant; this.hp = [5, 6, 8][variant] ?? 5;
     if (USE3D_ENEMY) { this.d3 = new Dragon3D(scene, variant); return; }
     this.m.add(mk(new THREE.SphereGeometry(0.7, 10, 8), 0xd6342a, 0x3a0500)); (this.m.children[0] as THREE.Mesh).scale.set(1.5, 0.8, 0.8);
     const head = mk(new THREE.ConeGeometry(0.3, 0.7, 6), 0xff7a2a); head.rotation.z = Math.PI / 2; head.position.x = 1.1; this.m.add(head);
@@ -63,17 +64,33 @@ export class Dragon {
     scene.add(this.m);
   }
   private remove() { this.alive = false; this.scene.remove(this.d3 ? this.d3.mesh : this.m); }
+  /** Keep the dragon's body out of terrain: if its box overlaps a block stack, move to whichever side (over or under) is closer. */
+  private avoid(lvl: Level, x: number, y: number) {
+    for (let it = 0; it < 3; it++) {
+      let hit = false;
+      for (let ix = Math.floor(x - 1.1); ix <= Math.floor(x + 1.1) && !hit; ix++) for (let iy = Math.floor(y - 0.8); iy <= Math.floor(y + 0.8); iy++) if (lvl.solid(ix, iy)) {
+        let top = iy, bot = iy; while (lvl.solid(ix, top + 1)) top++; while (lvl.solid(ix, bot - 1)) bot--;
+        const up = top + 1 + 0.9, dn = bot - 0.9; y = dn > 2.5 && y - dn < up - y ? dn : up; hit = true; break;
+      }
+      if (!hit) break;
+    }
+    return y;
+  }
   update(dt: number, p: Player, bul: Bullets, lvl: Level, hz: Hazards, scene: THREE.Scene) {
     if (this.dying > 0) {                                              // shot down: tumble and fall, then vanish (0.7s)
       this.dying += dt; this.vy -= 30 * dt; this.y += this.vy * dt; this.x += Math.sign(p.x - this.x) * -2 * dt;
       this.d3?.update(dt, 0, true); this.d3?.set(this.x, this.y, 0.2, p.x > this.x ? 1 : -1);
       if (this.dying > 0.7 || this.y < -8) { lvl.burst(this.x, this.y, 8); this.remove(); } return 0;
     }
-    this.t += dt; const x = this.bx + Math.sin(this.t * 0.6) * 5, y = this.by + Math.sin(this.t * 1.3) * 1.2, face = p.x > x ? 1 : -1; this.x = x; this.y = y;
+    this.t += dt; const x = this.bx + Math.sin(this.t * 0.6) * 5, want = this.avoid(lvl, x, this.by + Math.sin(this.t * 1.3) * 1.2);
+    this.cy += Math.max(-10 * dt, Math.min(10 * dt, want - this.cy));                // glide over / under terrain instead of snapping
+    const y = this.cy, face = p.x > x ? 1 : -1; this.x = x; this.y = y;
     if (this.d3) { this.d3.update(dt, this.cd < 0.5 ? 1 - this.cd / 0.5 : 0); this.d3.set(x, y, 0.2, face); }
     else { this.m.position.set(x, y, 0); this.m.scale.x = face; this.wings.forEach((w, i) => w.rotation.x = Math.sin(this.t * 10) * 0.6 * (i ? 1 : -1)); }
     this.cd -= dt;
-    if (this.cd <= 0) { const o = this.d3 ? this.d3.muzzle() : new THREE.Vector3(x, y, 0), dx = p.x - o.x, dy = p.y + 0.7 - o.y, d = Math.hypot(dx, dy) || 1; hz.spawn(o.x, o.y, dx / d * 9, dy / d * 9, 0.2, 3, false, this.d3?.fire); this.cd = 2.2; }
+    if (this.cd <= 0) { const o = this.d3 ? this.d3.muzzle() : new THREE.Vector3(x, y, 0), dx = p.x - o.x, dy = p.y + 0.7 - o.y, d = Math.hypot(dx, dy) || 1; const sp = [9, 10, 11][this.tier] ?? 9, n = this.tier + 1, a0 = Math.atan2(dy, dx);
+      for (let k = 0; k < n; k++) { const a = a0 + (k - (n - 1) / 2) * 0.22; hz.spawn(o.x, o.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.2, 3, false, this.d3?.fire); }
+      this.cd = [2.3, 2.0, 1.8][this.tier] ?? 2.2; }
     if (bul.hit(x, y, this.d3 ? 1.0 : 1.3)) { this.d3?.hit(); if (--this.hp <= 0) { lvl.burst(x, y, 14); if (this.d3) { this.dying = 1e-3; this.vy = 4; } else this.remove(); return 300; } }
     return 0;
   }
