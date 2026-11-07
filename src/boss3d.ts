@@ -125,7 +125,7 @@ export class Boss3D {
                 fx.shake(0.25); lvl.burst(this.x, this.y, 8);
             }
         }
-        this.waves.update(dt, p, sp);
+        this.waves.update(dt, p, sp); 
         if (this.st === 'blast' && clipT >= LAUNCH && !this.fired) {              // one aimed ring (phase 2: a 3-way fan)
             this.fired = true; fx.shake(0.25, this.x);
             if (this.phase === 2) { this.shoot(hz, p, -0.22); this.shoot(hz, p, 0); this.shoot(hz, p, 0.22); } else this.shoot(hz, p, 0);
