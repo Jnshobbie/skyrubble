@@ -5,7 +5,7 @@ import { AnimSprite } from './anim';
 import { Hero3D } from './hero3d';
 import { HERO } from './sprites';
 const USE3D = new URLSearchParams(location.search).get('hero') !== '2d'; // 3D is the default; /?hero=2d falls back to the sprite hero
-const ASSIST_RANGE = 26, ASSIST_CONE = 1.2;     // aim assist: max distance (tiles) and max angle (radians, ~69 deg) up/down from straight ahead
+const ASSIST_RANGE = 26, ASSIST_LEVEL = 0.35, ASSIST_TILT = 0.3;     // aim assist: max distance (tiles); 'level' = within ~20 deg of straight ahead; up/down keys pick targets tilted more than ~17 deg above/below
 const G = -42, JUMP = 18, JUMP2 = 16, RUN = 7.5, W = 0.7, H = 1.3;
 export class Bullets {
   list: { m: THREE.Mesh; vx: number; vy: number; life: number }[] = [];
@@ -52,7 +52,7 @@ export class Player {
     // aim: up = 45 deg when moving / 90 straight up; down = 45 deg on the ground or while moving, 90 straight down when airborne and standing still
     const ay = (inp.up ? 1 : 0) - (inp.down ? 1 : 0), moving = inp.x !== 0;
     this.aim = ay === 0 ? 0 : ay > 0 ? (moving ? Math.PI / 4 : Math.PI / 2) : (moving || this.ground ? -Math.PI / 4 : -Math.PI / 2);
-    if (inp.fire && ay === 0 && this.assist) this.aim = this.assistAim();                // aim assist: no aim key held -> point at the nearest target in front
+    if (this.assist && (inp.fire || ay !== 0)) { const a = this.assistAim(ay); if (a !== null) this.aim = a; }   // aim assist: the direction you hold picks the target, the assist fine-tunes the angle
     if (this.spr instanceof Hero3D) this.spr.aim = this.aim;
     if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face, this.aim); this.cd = 0.16; }
     const run = Math.abs(this.vx) > 0.8;
@@ -60,12 +60,14 @@ export class Player {
     this.spr.play(clip); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
     this.spr.mesh.visible = this.inv <= 0 || this.inv > 0.95 || Math.floor(this.inv * 14) % 2 === 0;
   }
-  /** Angle (relative to facing, + = up) toward the nearest target in front of the player, or 0 when there is none. */
-  assistAim() {
-    const ox = this.x + this.face * 0.6, oy = this.y + 0.95; let best = 0, bd = 1e9;
+  /** Aim assist. The direction the player holds picks WHICH target: up = targets above, down = targets below, nothing = targets roughly level.
+   *  Returns the exact angle (relative to facing, + = up) to the nearest target in that direction, or null to keep the manual aim. */
+  assistAim(ay: number): number | null {
+    const ox = this.x + this.face * 0.6, oy = this.y + 0.95; let best: number | null = null, bd = 1e9;
     for (const t of this.targets) {
-      const dx = (t.x - ox) * this.face, dy = t.y - oy, d = Math.hypot(dx, dy); if (dx < 0.5 || d > ASSIST_RANGE || d >= bd) continue;
-      const a = Math.atan2(dy, dx); if (Math.abs(a) <= ASSIST_CONE) { bd = d; best = a; }
+      const dx = (t.x - ox) * this.face, dy = t.y - oy, d = Math.hypot(dx, dy); if (d > ASSIST_RANGE || d >= bd || dx < (ay === 0 ? 0.5 : -1.5)) continue;
+      const a = Math.atan2(dy, Math.max(dx, 0));                        // a target right above/below you counts as straight up/down
+      if (ay > 0 ? a > ASSIST_TILT : ay < 0 ? a < -ASSIST_TILT : Math.abs(a) <= ASSIST_LEVEL) { bd = d; best = a; }
     }
     return best;
   }

@@ -42,7 +42,7 @@ export const menu = {
     const back = () => this.screen(kind, info);
     if (kind === 'title') {
       title('SKYRUBBLE'); const cp = info.cp ?? 0;
-      btn(cp > 0 ? `CONTINUE (CHECKPOINT ${cp})` : 'PLAY', 'g', () => this.on.play());
+      btn(cp > 3 ? 'CONTINUE (BOSS FIGHT)' : cp > 0 ? `CONTINUE (CHECKPOINT ${cp})` : 'PLAY', 'g', () => this.on.play());
       if (cp > 0) btn('NEW GAME', 'y', () => this.on.newGame());
     } else if (kind === 'pause') { title('PAUSED'); btn('RESUME', 'g', () => this.on.resume()); btn('RESTART', 'y', () => this.on.restart()); }
     else if (kind === 'over') { title('GAME OVER', 'SCORE ' + (info.score ?? 0)); btn('RETRY', 'g', () => this.on.restart()); }

@@ -29,7 +29,7 @@ const player = new Player(scene), bul = new Bullets(scene), hz = new Hazards(sce
 // Resume from the last checkpoint after a reload / R (kept in sessionStorage). Debug: ?cp=2 starts at checkpoint 2.
 const qs = new URLSearchParams(location.search); let cpIdx = Number(qs.get('cp') ?? sessionStorage.getItem('sky_cp') ?? 0);
 if (qs.has('cp')) sessionStorage.setItem('sky_cp', String(cpIdx));
-let respawn = { x: cpIdx > 0 ? MAP.checkpoints[cpIdx - 1] : 2, y: cpIdx > 0 ? 3 : 4 }; player.x = respawn.x; player.y = respawn.y; let camX = player.x, camY = 5;
+let respawn = { x: cpIdx > MAP.checkpoints.length ? MAP.arenaX + 10 : cpIdx > 0 ? MAP.checkpoints[cpIdx - 1] : 2, y: cpIdx > 0 ? 3 : 4 }; player.x = respawn.x; player.y = respawn.y; let camX = player.x, camY = 5;
 // Enemies are created lazily when the player gets within 55 tiles, updated + drawn only within 40 (the world is ~4x bigger now; keeps phones fast).
 type Ent<T extends { alive: boolean }> = { x: number; make: () => T; o?: T };
 const foes: Ent<Soldier>[] = MAP.foes.filter(f => f.x > respawn.x - 20).map(f => ({ x: f.x, make: () => new Soldier(scene, f.x, f.y, Math.max(0.8, f.r), f.elite ? CLUB_ELITE : CLUB_OPT) }));
@@ -68,7 +68,7 @@ const clock = new THREE.Clock();
   if (!over && !paused) {
     stats.time += dt; if ((saveT += dt) > 5) { saveT = 0; save(); }
     poll(); player.assist = settings.aimAssist;
-    if (player.assist && inp.fire) {                                                      // targets for aim assist: living enemies + the boss
+    if (player.assist && (inp.fire || inp.up || inp.down)) {                                                      // targets for aim assist: living enemies + the boss
       const t: { x: number; y: number }[] = [];
       for (const e of foes) if (e.o?.alive && e.o.st !== 'dying') t.push({ x: e.o.x, y: e.o.y + 1 });
       for (const e of dragons) if (e.o?.alive && !e.o.dying) t.push({ x: e.o.x, y: e.o.y });
@@ -83,7 +83,7 @@ const clock = new THREE.Clock();
       fx.burst(f.x + 0.6, 4.5, new THREE.Color(0.5, 3, 0.8), 30, 6, 3, 8, 0.9); say(`CHECKPOINT ${cpIdx} / ${flags.length}`); }
     toastT -= dt; if (toastT < 0) toast.style.opacity = '0';
     if (player.ground && lvl.solid(Math.floor(player.x - 0.8), Math.floor(player.y - 0.5)) && lvl.solid(Math.floor(player.x + 0.8), Math.floor(player.y - 0.5)) && player.inv <= 0) safe = { x: player.x, y: player.y + 0.3 };   // last firm footing
-    if (!boss.active && player.x > MAP.arenaX + 8) { boss.active = true; boss.next(player); $('boss').style.display = 'block'; }
+    if (!boss.active && player.x > MAP.arenaX + 8) { boss.active = true; boss.next(player); $('boss').style.display = 'block'; cpIdx = flags.length + 1; respawn = { x: MAP.arenaX + 10, y: 3 }; sessionStorage.setItem('sky_cp', String(cpIdx)); }
     score += boss.update(dt, player, bul, lvl, hz); hz.update(dt, player, lvl); lvl.update(dt);
     if (player.y < -8) { player.hp--; player.x = safe.x - Math.sign(player.vx || 1) * 1.2; player.y = safe.y; player.vy = 0; player.inv = 1.2; }     // fell: back to the last firm ground (not the start)
     if (player.hp <= 0) { over = true; stats.deaths++; stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.3; }
