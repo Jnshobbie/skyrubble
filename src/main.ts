@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { makeComposer } from './grade';
-import { poll, isTouch } from './input';
+import { poll, isTouch, inp } from './input';
 import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
 import { Soldier, Dragon, Hazards, Saw, CLUB_OPT, CLUB_ELITE } from './foes';
 import { Boss3D } from './boss3d';
 import { fx } from './fx';
 import { buildMap } from './map';
-import { menu, stats, save } from './menu';
+import { menu, stats, save, settings } from './menu';
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
@@ -67,7 +67,15 @@ const clock = new THREE.Clock();
   const dt = Math.min(clock.getDelta(), 1 / 30);
   if (!over && !paused) {
     stats.time += dt; if ((saveT += dt) > 5) { saveT = 0; save(); }
-    poll(); player.update(dt, lvl, bul); bul.update(dt, lvl);
+    poll(); player.assist = settings.aimAssist;
+    if (player.assist && inp.fire) {                                                      // targets for aim assist: living enemies + the boss
+      const t: { x: number; y: number }[] = [];
+      for (const e of foes) if (e.o?.alive && e.o.st !== 'dying') t.push({ x: e.o.x, y: e.o.y + 1 });
+      for (const e of dragons) if (e.o?.alive && !e.o.dying) t.push({ x: e.o.x, y: e.o.y });
+      if (boss.active && !boss.dead && boss.st !== 'defeat') t.push(boss.aimPoint());
+      player.targets = t;
+    }
+    player.update(dt, lvl, bul); bul.update(dt, lvl);
     stream(foes, (o, on) => { o.spr.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
     stream(dragons, (o, on) => { if (o.d3) o.d3.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, hz, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
     for (const w of saws) if (Math.abs(w.x - player.x) < 40) w.update(dt, player);

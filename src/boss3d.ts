@@ -71,6 +71,7 @@ export class Boss3D {
     }
     private get sp() { return this.phase === 2 ? 1.25 : 1; }
     private coreY() { return this.y + HOVER + this.oy + this.coreH; }
+    aimPoint() { return { x: this.x, y: this.coreY() }; }       // where aim assist points
     private play(s: S) {
         const c = ST[s], a = this.acts.get(c.clip); if (!a) return;
         a.setLoop(c.loop ? THREE.LoopRepeat : THREE.LoopOnce, Infinity); a.clampWhenFinished = true; a.timeScale = c.ts * this.sp;

@@ -5,6 +5,7 @@ import { AnimSprite } from './anim';
 import { Hero3D } from './hero3d';
 import { HERO } from './sprites';
 const USE3D = new URLSearchParams(location.search).get('hero') !== '2d'; // 3D is the default; /?hero=2d falls back to the sprite hero
+const ASSIST_RANGE = 26, ASSIST_CONE = 1.2;     // aim assist: max distance (tiles) and max angle (radians, ~69 deg) up/down from straight ahead
 const G = -42, JUMP = 18, JUMP2 = 16, RUN = 7.5, W = 0.7, H = 1.3;
 export class Bullets {
   list: { m: THREE.Mesh; vx: number; vy: number; life: number }[] = [];
@@ -29,7 +30,7 @@ export class Bullets {
   }
 }
 export class Player {
-  spr: AnimSprite | Hero3D; x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; air = 1; face = 1; aim = 0; hp = 5; inv = 0; cd = 0;
+  spr: AnimSprite | Hero3D; x = 2; y = 4; vx = 0; vy = 0; ground = false; coyote = 0; buf = 0; air = 1; face = 1; aim = 0; assist = false; targets: { x: number; y: number }[] = []; hp = 5; inv = 0; cd = 0;
   constructor(scene: THREE.Scene) { this.spr = USE3D ? new Hero3D(scene) : new AnimSprite(HERO, 'hero', scene); }
   animOnly(dt: number, lvl: Level) {            // game over: keep falling to the floor, always visible, no flicker
     this.vx = 0; this.vy = Math.max(this.vy + G * dt, -28); this.y += this.vy * dt; this.collide(lvl, false);
@@ -51,12 +52,22 @@ export class Player {
     // aim: up = 45 deg when moving / 90 straight up; down = 45 deg on the ground or while moving, 90 straight down when airborne and standing still
     const ay = (inp.up ? 1 : 0) - (inp.down ? 1 : 0), moving = inp.x !== 0;
     this.aim = ay === 0 ? 0 : ay > 0 ? (moving ? Math.PI / 4 : Math.PI / 2) : (moving || this.ground ? -Math.PI / 4 : -Math.PI / 2);
+    if (inp.fire && ay === 0 && this.assist) this.aim = this.assistAim();                // aim assist: no aim key held -> point at the nearest target in front
     if (this.spr instanceof Hero3D) this.spr.aim = this.aim;
     if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face, this.aim); this.cd = 0.16; }
     const run = Math.abs(this.vx) > 0.8;
     const clip = this.inv > 0.95 ? 'hurt' : !this.ground ? (inp.fire ? 'shootAir' : 'jump') : inp.fire ? (run ? 'shootRun' : 'shootStand') : run ? 'run' : 'idle';
     this.spr.play(clip); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
     this.spr.mesh.visible = this.inv <= 0 || this.inv > 0.95 || Math.floor(this.inv * 14) % 2 === 0;
+  }
+  /** Angle (relative to facing, + = up) toward the nearest target in front of the player, or 0 when there is none. */
+  assistAim() {
+    const ox = this.x + this.face * 0.6, oy = this.y + 0.95; let best = 0, bd = 1e9;
+    for (const t of this.targets) {
+      const dx = (t.x - ox) * this.face, dy = t.y - oy, d = Math.hypot(dx, dy); if (dx < 0.5 || d > ASSIST_RANGE || d >= bd) continue;
+      const a = Math.atan2(dy, dx); if (Math.abs(a) <= ASSIST_CONE) { bd = d; best = a; }
+    }
+    return best;
   }
   collide(lvl: Level, horiz: boolean) {
     for (let ix = Math.floor(this.x - W / 2); ix <= Math.floor(this.x + W / 2); ix++)
