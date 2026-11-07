@@ -94,7 +94,8 @@ export function buildMap(): MapData {
     else if (!t.floating && w >= 12 && t.x > 70 && rnd() < 0.5) saws.push({ x: t.x + w / 2 + ri(-2, 2), y: t.y + 0.9, rx: Math.min(2.2, w / 2 - 3) });
   }
   // dragons appear only AFTER the checkpoint that opens their zone: zone 1 green, zone 2 purple, zone 3 orange
+  const DRAGON_H = 2;   // hover height above the upper lane's floor (tiles): lower = easier to shoot, higher = harder
   for (let z = 1; z <= 3; z++) { const start = cps[z - 1] + 12, end = z < 3 ? cps[z] - 14 : arenaX - 14, n = z === 3 ? 4 : 3, step = (end - start) / n;
-    for (let i = 0; i < n; i++) dragons.push({ x: start + step * (i + 0.5), y: ri(14, 16), v: z - 1 }); }   // dragons hover above the upper lane
+    for (let i = 0; i < n; i++) dragons.push({ x: start + step * (i + 0.5), y: UP + DRAGON_H + ri(0, 2) * 0.5, v: z - 1 }); }   // dragons hover above the upper lane
   return { rects, foes, dragons, saws, checkpoints, bossX, arenaX, len: x, zones: [0, ...cps] };
 }

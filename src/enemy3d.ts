@@ -3,19 +3,25 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { aimBone } from './hero3d';
 // Rigged 3D ground enemies (one GLB per kind, cloned per enemy). Same interface as AnimSprite. Models natively face +x.
-export type Cfg = { url: string; h: number; map: Record<string, string>; runScale: number; walkScale?: number; once?: Record<string, number>; bob: boolean; extra?: { url: string; names: string[] }[] };
+export type Cfg = { url: string; h: number; map: Record<string, string>; runScale: number; walkScale?: number; clipsUrl?: string; once?: Record<string, number>; bob: boolean; extra?: { url: string; names: string[] }[] };
 export const SOLDIER: Cfg = { url: 'models/enemy.glb', h: 1.75, map: { idle: 'Idle', walk: 'Walk', run: 'Walk', shield: 'Idle', slash: 'Idle', hurt: 'Idle' }, runScale: 1.8, bob: false };
 // Club monster (Orc_Skull from ultimate_monsters_pack.glb, extracted to its own file by tools/bake). Clips: Idle (pack's 1s loop), plus Slam and JumpSlam = the old gorilla boss's
 // Standing_Melee_Attack_Downward / Mutant_Jump_Attack, retargeted onto this rig. `once` = clips that play a single time, with their speed-up (Slam 2.27s -> 1.62s, JumpSlam 3.7s -> 2.31s).
 // Walk = Walking.fbx retargeted (in place: root motion stripped, feet tied to the retargeted legs).
 const CLUB_MAP = { idle: 'Idle', walk: 'Walk', run: 'Walk', shield: 'Idle', slash: 'Slam', jump: 'JumpSlam', hurt: 'Idle' };
-export const CLUB: Cfg = { url: 'models/orc_skull.glb', h: 2.3, map: CLUB_MAP, runScale: 2.6, walkScale: 1.24, once: { Slam: 1.4, JumpSlam: 1.6 }, bob: false };   // Walk loop covers ~1.2 world units/s at x1: x1.24 = patrol speed 1.5, x2.6 = chase speed 3.15 (no foot sliding)
-export const CLUB_BIG: Cfg = { ...CLUB, h: 3.0 };
+export const CLUB: Cfg = { url: 'models/orc_skull.glb', h: 2.3, map: CLUB_MAP, runScale: 2.12, walkScale: 1.01, clipsUrl: 'models/orc_walk.json', once: { Slam: 1.4, JumpSlam: 1.6 }, bob: false };   // Walk loop covers ~1.2 world units/s at x1: x1.24 = patrol speed 1.5, x2.6 = chase speed 3.15 (no foot sliding)
+export const CLUB_BIG: Cfg = { ...CLUB, h: 3.0, walkScale: 0.67, runScale: 1.41 };
 const shared = new Map<string, Promise<{ g: GLTF; bb: THREE.Box3 }>>();
-const loadShared = (c: Cfg) => { let p = shared.get(c.url); if (!p) { const L = new GLTFLoader();
-  p = Promise.all([L.loadAsync(c.url), ...(c.extra ?? []).map(e => L.loadAsync(e.url))]).then(([g, ...ex]) => {
-    (c.extra ?? []).forEach((e, i) => { for (const clip of ex[i].animations) if (e.names.includes(clip.name)) g.animations.push(new THREE.AnimationClip(clip.name, clip.duration, clip.tracks.filter(t => t.name.endsWith('.quaternion')))); });
-    g.scene.updateMatrixWorld(true); return { g, bb: new THREE.Box3().setFromObject(g.scene) }; }); shared.set(c.url, p); } return p; };
+const loadShared = (c: Cfg) => {
+  let p = shared.get(c.url); if (!p) {
+    const L = new GLTFLoader();
+    p = Promise.all([L.loadAsync(c.url), ...(c.extra ?? []).map(e => L.loadAsync(e.url))]).then(async ([g, ...ex]) => {
+      (c.extra ?? []).forEach((e, i) => { for (const clip of ex[i].animations) if (e.names.includes(clip.name)) g.animations.push(new THREE.AnimationClip(clip.name, clip.duration, clip.tracks.filter(t => t.name.endsWith('.quaternion')))); });
+      if (c.clipsUrl) await fetch(c.clipsUrl).then(r => r.json()).then(j => g.animations.push(THREE.AnimationClip.parse(j))).catch(e => console.warn('enemy3d: could not load', c.clipsUrl, e));
+      g.scene.updateMatrixWorld(true); return { g, bb: new THREE.Box3().setFromObject(g.scene) };
+    }); shared.set(c.url, p);
+  } return p;
+};
 const DIE = 0.35, HOLD = 0.25, SHRINK = 0.25;                       // fall over, lie there, vanish: 0.85s total (was ~2.2s)
 const ease = (k: number) => 1 - (1 - k) * (1 - k);
 export class Enemy3D {
@@ -63,9 +69,11 @@ export class Enemy3D {
     if (this.want === 'slash' && !(this.cfg.once && this.cfg.map.slash in this.cfg.once)) {                 // soldier: procedural swing (lunge + overhead-to-forward arm sweep)
       this.slashT += dt; const k = Math.min(1, this.slashT / 0.5), s = Math.sin(k * Math.PI), b = this.bones;
       this.inner.rotation.z = -0.3 * s; this.inner.position.x = 0.35 * s;
-      if (b['RightArm'] && b['RightForeArm']) { const phi = THREE.MathUtils.lerp(2.0, -0.5, k), f = new THREE.Vector3(1, 0, 0).applyQuaternion(this.mesh.quaternion);
+      if (b['RightArm'] && b['RightForeArm']) {
+        const phi = THREE.MathUtils.lerp(2.0, -0.5, k), f = new THREE.Vector3(1, 0, 0).applyQuaternion(this.mesh.quaternion);
         const dir = f.multiplyScalar(Math.cos(phi)).add(new THREE.Vector3(0, Math.sin(phi), 0)).normalize(); this.mesh.updateMatrixWorld(true);
-        aimBone(b['RightArm'], b['RightForeArm'], dir, s); aimBone(b['RightForeArm'], b['RightHand'], dir, s); }
+        aimBone(b['RightArm'], b['RightForeArm'], dir, s); aimBone(b['RightForeArm'], b['RightHand'], dir, s);
+      }
     } else { this.inner.rotation.z = 0; this.inner.position.x = 0; }
     this.flash -= dt; const f = this.flash > 0; for (const m of this.mats) m.emissive.setRGB(f ? this.tint.r : 1, f ? this.tint.g : 1, f ? this.tint.b : 1);
     for (const o of this.flat) { if (f) o.m.emissive.setRGB(this.tint.r * 0.6, this.tint.g * 0.6, this.tint.b * 0.6); else o.m.emissive.copy(o.base); }

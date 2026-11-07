@@ -6,7 +6,7 @@ import { Enemy3D, SOLDIER, CLUB, CLUB_BIG, type Cfg } from './enemy3d';
 import { fx } from './fx';
 import { Dragon3D } from './dragon3d';
 const USE3D_ENEMY = new URLSearchParams(location.search).get('enemy') !== '2d'; // 3D is the default; /?enemy=2d falls back to sprites/primitives
-import { ENEMY, BOSS } from './sprites';
+import { ENEMY } from './sprites';
 const mk = (g: THREE.BufferGeometry, c: number, e = 0) => { const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: e })); m.castShadow = true; return m; };
 
 // Enemy fire / shockwaves. A fireball (colour given) is smaller than the old one, leaves a spark trail, and on hitting ground/a platform/the player
@@ -163,45 +163,6 @@ export class Soldier {
 export const CLUB_OPT: FoeOpt = { cfg: CLUB, hp: 4, speed: 1.5, reach: 2.6, hit: [0.68, 0.92], dur: 1.65, shield: false, score: 200, hitY: 1.1, hitR: 1.0, cool: 0.6,
   jump: { min: 3.4, max: 7, reach: 2.4, hit: [0.97, 1.22], dur: 2.3, lunge: [0.2, 1.0], cd: 3.5 } };
 export const CLUB_ELITE: FoeOpt = { ...CLUB_OPT, cfg: CLUB_BIG, hp: 8, speed: 1.3, reach: 3.2, score: 400, hitY: 1.4, hitR: 1.3, jump: { ...CLUB_OPT.jump!, reach: 3.0, min: 4, max: 8 } };
-
-// Boss: state machine (mirrors the reference's Animator graph). Each state plays one clip of the gorilla sprite.
-type S = 'idle' | 'intimidate' | 'stomp' | 'club' | 'block' | 'getAxe' | 'defeat';
-const DUR: Record<S, number> = { idle: 1.0, intimidate: 1.4, stomp: 1.1, club: 1.1, block: 1.6, getAxe: 1.6, defeat: 2.2 };
-const CLIP: Record<S, string> = { idle: 'idle', intimidate: 'intimidate', stomp: 'stomp', club: 'swing', block: 'block', getAxe: 'shieldBreak', defeat: 'death' };
-const CHAIN: Record<number, S[]> = { 1: ['intimidate', 'stomp', 'club', 'block'], 2: ['intimidate', 'stomp', 'club', 'stomp', 'club'] };
-export class Boss {
-  spr: AnimSprite; shieldHp = 14; hp = 30; phase = 1; st: S = 'idle'; t = 0; i = 0; active = false; dead = false; face = -1; fired = false; flash = 0;
-  constructor(public scene: THREE.Scene, public x: number, public y: number) { this.spr = new AnimSprite(BOSS, 'boss', scene); this.spr.mesh.visible = false; this.spr.set(x, y, 0.2, -1); }
-  enter(s: S, p: Player) {
-    this.st = s; this.t = 0; this.fired = false; this.face = p.x < this.x ? -1 : 1;
-    const n = BOSS.clips[CLIP[s]].length, sp = this.phase === 2 ? 1.4 : 1;
-    this.spr.play(CLIP[s], s === 'idle' || s === 'block', n / (DUR[s] / sp));
-  }
-  next(p: Player) { this.enter(this.hp <= 0 ? 'defeat' : CHAIN[this.phase][this.i++ % CHAIN[this.phase].length], p); }
-  damage(n: number, p: Player, lvl: Level) {
-    if (this.st === 'block' || this.dead || !this.active || this.st === 'defeat') return;
-    this.flash = 0.07;
-    if (this.shieldHp > 0) { this.shieldHp -= n; lvl.burst(this.x + 1.8 * this.face, this.y + 2.2, 4); if (this.shieldHp <= 0) { this.phase = 2; this.i = 0; lvl.burst(this.x, this.y + 2.4, 24); this.enter('getAxe', p); } }
-    else this.hp -= n;
-  }
-  update(dt: number, p: Player, bul: Bullets, lvl: Level, hz: Hazards) {
-    if (!this.active || this.dead) return 0;
-    this.spr.mesh.visible = true; const sp = this.phase === 2 ? 1.4 : 1; this.t += dt * sp; this.flash -= dt;
-    if (this.st !== 'defeat' && bul.hit(this.x, this.y + 2.3, 2.0)) this.damage(1, p, lvl);
-    const k = this.t / DUR[this.st];
-    const tele = (this.st === 'stomp' || this.st === 'club') && k < 0.5 ? (Math.sin(this.t * 30) * 0.5 + 0.5) * 0.6 : 0;
-    this.spr.mat.color.setRGB(this.flash > 0 ? 3 : 1 + tele * 2.5, this.flash > 0 ? 3 : 1, this.flash > 0 ? 3 : 1);
-    if (this.st === 'stomp' && k > 0.5 && !this.fired) { this.fired = true; lvl.burst(this.x, this.y, 12); hz.spawn(this.x - 2, this.y + 0.4, -9, 0, 0.3, 2.5, true); hz.spawn(this.x + 2, this.y + 0.4, 9, 0, 0.3, 2.5, true); }
-    if (this.st === 'club' && k > 0.45 && k < 0.75 && Math.abs(p.x - (this.x + this.face * 2.6)) < 2.4 && Math.abs(p.y - this.y) < 2.8) p.hurt(this.face);
-    if (this.st !== 'defeat' && Math.abs(p.x - this.x) < 1.8 && p.y < this.y + 4 && p.y + 1.3 > this.y) p.hurt(Math.sign(p.x - this.x) || 1);
-    this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
-    if (this.t >= DUR[this.st]) {
-      if (this.st === 'defeat') { this.dead = true; lvl.burst(this.x, this.y + 2.2, 60); return 5000; }
-      this.next(p);
-    }
-    return 0;
-  }
-}
 
 // Spinning saw blade that patrols a short rail (x and/or y range). Not shootable.
 export class Saw {

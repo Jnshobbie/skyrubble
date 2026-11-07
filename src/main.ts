@@ -3,7 +3,8 @@ import { makeComposer } from './grade';
 import { poll, isTouch } from './input';
 import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
-import { Soldier, Dragon, Boss, Hazards, Saw, CLUB_OPT, CLUB_ELITE } from './foes';
+import { Soldier, Dragon, Hazards, Saw, CLUB_OPT, CLUB_ELITE } from './foes';
+import { Boss3D } from './boss3d';
 import { fx } from './fx';
 import { buildMap } from './map';
 import { menu, stats, save } from './menu';
@@ -37,7 +38,7 @@ const saws = MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new Saw(scene, 
 const stream = <T extends { alive: boolean }>(list: Ent<T>[], vis: (o: T, on: boolean) => void, step: (o: T) => void) => {
   for (const e of list) { const d = Math.abs(e.x - player.x); if (!e.o && d < 55) e.o = e.make(); if (e.o?.alive) { const on = d < 40; vis(e.o, on); if (on) step(e.o); } }
 };
-const boss = new Boss(scene, MAP.bossX, 2);
+const boss = new Boss3D(scene, MAP.bossX, 2, MAP.arenaX);
 // checkpoint flags. FLAG_SCALE: 1 = pole 3 tiles tall; 0.6 = 60% size
 const FLAG_SCALE = 0.6;
 const flags = MAP.checkpoints.map((x, i) => { const g = new THREE.Group(), pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3, 6), new THREE.MeshStandardMaterial({ color: 0x4a3a30 })),
