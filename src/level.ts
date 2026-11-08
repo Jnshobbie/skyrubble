@@ -5,7 +5,12 @@ export const PAL = { grass: THEME.grass, block: THEME.block, trunk: THEME.trunk,
 const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
 const loader = new THREE.TextureLoader();
 const tex = (n: string) => { const t = loader.load(`art/${n}.png`); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
-const sprite = (n: string, c: THREE.ColorRepresentation = THEME.tint) => new THREE.MeshBasicMaterial({ map: tex(n), alphaTest: 0.5, color: c });
+// lum = night glow: use only the texture's brightness and paint it with the tint (so green leaves can become blue)
+const sprite = (n: string, c: THREE.ColorRepresentation = THEME.tint, lum = false) => {
+  const m = new THREE.MeshBasicMaterial({ map: tex(n), alphaTest: 0.5, color: c });
+  if (lum) { m.customProgramCacheKey = () => 'lum'; m.onBeforeCompile = s => { s.fragmentShader = s.fragmentShader.replace('#include <map_fragment>', 'vec4 sampledDiffuseColor = texture2D(map, vMapUv); diffuseColor *= vec4(vec3(dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114)) * 1.6), sampledDiffuseColor.a);'); }; }
+  return m;
+};
 const V = 5, vary = (x: number, y: number) => (x * 7 + y * 13 + ((x * y) & 3)) % V;
 type Deb = { m: THREE.Mesh; v: THREE.Vector3; life: number };
 type Part = { m: THREE.InstancedMesh; i: number };
@@ -18,13 +23,13 @@ export class Level {
     const M = new THREE.Matrix4(), add = (k: string, p: Part) => (this.parts.get(k) ?? this.parts.set(k, []).get(k)!).push(p);
     const bm = new THREE.MeshStandardMaterial({ color: PAL.block, roughness: 0.95, flatShading: true });
     this.body = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 2), bm, all.length);
-    const tops = all.filter(top); this.cap = new THREE.InstancedMesh(new THREE.BoxGeometry(1.0, 0.16, 2.0), new THREE.MeshStandardMaterial({ color: PAL.grass, roughness: 1 }), tops.length);
+    const tops = all.filter(top); this.cap = new THREE.InstancedMesh(new THREE.BoxGeometry(1.0, 0.16, 2.0), new THREE.MeshStandardMaterial({ color: PAL.grass, roughness: 1, emissive: THEME.edge, emissiveIntensity: THEME.edgeI }), tops.length);
     all.forEach(([x, y], k) => { this.body.setMatrixAt(k, M.makeTranslation(x + 0.5, y + 0.5, 0)); add(`${x},${y}`, { m: this.body, i: k }); });
     tops.forEach(([x, y], k) => { this.cap.setMatrixAt(k, M.makeTranslation(x + 0.5, y + 0.96, 0)); add(`${x},${y}`, { m: this.cap, i: k }); });
     this.body.castShadow = this.body.receiveShadow = true; scene.add(this.body, this.cap);
     // stone faces (5 variants) on every tile front; grass fringe (5 variants) on every top tile
     const stoneMats = Array.from({ length: V }, (_, i) => new THREE.MeshBasicMaterial({ map: tex(`stone${i}`), color: THEME.stone }));
-    const grassMats = Array.from({ length: V }, (_, i) => sprite(`grass${i}`));
+    const grassMats = Array.from({ length: V }, (_, i) => sprite(`grass${i}`, THEME.grassTint));
     const place = (list: number[][], mats: THREE.Material[], geo: THREE.BufferGeometry, pos: (x: number, y: number) => THREE.Vector3) => {
       for (let v = 0; v < V; v++) {
         const mine = list.filter(([x, y]) => vary(x, y) === v); if (!mine.length) continue;
@@ -81,7 +86,7 @@ export class Level {
     });
     for (const pink of [false, true]) {
       const list = bushes.filter(b => b.pink === pink); if (!list.length) continue;
-      const im = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1.04), sprite(pink ? 'bush_pink' : 'bush', pink ? THEME.bushPink : THEME.bush), list.length);
+      const im = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1.04), sprite(pink ? 'bush_pink' : 'bush', pink ? THEME.bushPink : THEME.bush, THEME.lum), list.length);
       list.forEach((b, i) => im.setMatrixAt(i, M.compose(b.p, Q.setFromEuler(new THREE.Euler(0, 0, (rnd() - 0.5) * 0.15)), new THREE.Vector3(b.s * 1.6, b.s * 1.6, 1))));
       S.add(im);
     }

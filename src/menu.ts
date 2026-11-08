@@ -1,10 +1,11 @@
 import { fx, SHAKE_SCALE } from './fx';
+import { LEVEL } from './theme';
 // Title / pause / game-over / win menu (HTML overlay over the live, blurred game), plus persistent Record stats and Settings (localStorage).
 // The game (main.ts) only calls menu.open(kind, ...) and fills menu.on.* callbacks.
-export type Stats = { games: number; time: number; score: number; kills: number; deaths: number; best: number; bestDate: string; cp: number; wins: number };
-const S0: Stats = { games: 0, time: 0, score: 0, kills: 0, deaths: 0, best: 0, bestDate: '-', cp: 0, wins: 0 };
+export type Stats = { games: number; time: number; score: number; kills: number; deaths: number; best: number; bestDate: string; cp: number; wins: number; unlocked: number };
+const S0: Stats = { games: 0, time: 0, score: 0, kills: 0, deaths: 0, best: 0, bestDate: '-', cp: 0, wins: 0, unlocked: 1 };
 const rd = <T,>(k: string, d: T): T => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') }; } catch { return d; } };
-export const stats: Stats = rd('sky_stats', S0), settings = rd('sky_set', { shake: SHAKE_SCALE, aimAssist: true });
+export const stats: Stats = rd('sky_stats', S0), settings = rd('sky_set', { shake: SHAKE_SCALE, aimAssist: true, level: 1 });
 export const save = () => { try { localStorage.setItem('sky_stats', JSON.stringify(stats)); localStorage.setItem('sky_set', JSON.stringify(settings)); } catch { /* private mode */ } };
 fx.scale = settings.shake;
 const fmt = (s: number) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s % 60).padStart(2, '0'); };
@@ -25,6 +26,12 @@ body.menu #hp,body.menu #score,body.menu #boss,body.menu #touch,body.menu #pause
 .m-panel input[type=range]{width:100%;accent-color:#4de8b5;height:28px}
 .m-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:#fff;font:700 13px system-ui;letter-spacing:1px;text-shadow:0 2px 0 #000a}
 @media (max-height:640px){.m-title{font-size:clamp(24px,6vw,34px);padding:6px 4px 5px;margin-bottom:10px}.m-btn{margin:8px 0;padding:7px 6px 5px;font-size:20px}.m-panel{padding:12px 18px 16px}.m-sub{margin:-4px 0 8px;font-size:17px}.m-hint{display:none}}
+#menu .m-lv{display:flex;gap:10px;margin:6px 0 12px}
+#menu .m-card{flex:1;position:relative;aspect-ratio:16/10;padding:0;overflow:hidden;border:4px solid #000;border-radius:4px;cursor:pointer;background:#222}
+#menu .m-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#menu .m-card span{position:absolute;left:0;right:0;bottom:0;padding:5px 2px 4px;background:#000c;color:#fff;font:900 12px system-ui;letter-spacing:1px;text-align:center}
+#menu .m-card.sel{border-color:#4de8b5;box-shadow:0 0 0 3px #4de8b588}
+#menu .m-card.lock{filter:grayscale(1) brightness(.5);cursor:not-allowed}
 #pausebtn{position:fixed;top:40px;right:12px;width:44px;height:44px;border-radius:50%;border:3px solid #fff9;background:#0005;color:#fff;font:900 18px system-ui;z-index:5;cursor:pointer}`;
 document.head.appendChild(css);
 const root = document.body.appendChild(document.createElement('div')); root.id = 'menu';
@@ -32,21 +39,25 @@ const pauseBtn = document.body.appendChild(document.createElement('button')); pa
 type Kind = 'title' | 'pause' | 'over' | 'win';
 export const menu = {
   isOpen: false,
-  on: { play: () => {}, resume: () => {}, restart: () => {}, newGame: () => {}, quit: () => {}, pause: () => {} },
-  open(kind: Kind, info: { score?: number; cp?: number } = {}) { this.isOpen = true; document.body.classList.add('menu'); root.style.display = 'flex'; this.screen(kind, info); },
+  on: { play: () => {}, resume: () => {}, restart: () => {}, newGame: () => {}, quit: () => {}, pause: () => {}, level: (_n: number, _auto?: boolean) => {} },
+  open(kind: Kind, info: { score?: number; cp?: number; level?: number } = {}) { this.isOpen = true; document.body.classList.add('menu'); root.style.display = 'flex'; this.screen(kind, info); },
   close() { this.isOpen = false; document.body.classList.remove('menu'); root.style.display = 'none'; },
-  screen(kind: Kind, info: { score?: number; cp?: number } = {}) {
+  screen(kind: Kind, info: { score?: number; cp?: number; level?: number } = {}) {
     const P = document.createElement('div'); P.className = 'm-panel';
     const title = (t: string, sub = '') => { const d = document.createElement('div'); d.className = 'm-title'; d.textContent = t; P.appendChild(d); if (sub) { const s = document.createElement('div'); s.className = 'm-sub'; s.textContent = sub; P.appendChild(s); } };
     const btn = (label: string, cls: string, fn: () => void) => { const b = document.createElement('button'); b.className = 'm-btn ' + cls; b.textContent = label; b.onclick = fn; P.appendChild(b); return b; };
     const back = () => this.screen(kind, info);
     if (kind === 'title') {
-      title('SKYRUBBLE'); const cp = info.cp ?? 0;
+      title('SKYRUBBLE', 'LEVEL ' + (info.level ?? 1)); const cp = info.cp ?? 0;
       btn(cp > 3 ? 'CONTINUE (BOSS FIGHT)' : cp > 0 ? `CONTINUE (CHECKPOINT ${cp})` : 'PLAY', 'g', () => this.on.play());
       if (cp > 0) btn('NEW GAME', 'y', () => this.on.newGame());
     } else if (kind === 'pause') { title('PAUSED'); btn('RESUME', 'g', () => this.on.resume()); btn('RESTART', 'y', () => this.on.restart()); }
     else if (kind === 'over') { title('GAME OVER', 'SCORE ' + (info.score ?? 0)); btn('RETRY', 'g', () => this.on.restart()); }
-    else { title('CLEARED!', 'SCORE ' + (info.score ?? 0)); btn('PLAY AGAIN', 'g', () => this.on.newGame()); }
+    else {
+      const lv = info.level ?? 1; title(`LEVEL ${lv} CLEARED!`, 'SCORE ' + (info.score ?? 0));
+      if (lv < 2) { const u = document.createElement('div'); u.className = 'm-sub'; u.textContent = `LEVEL ${lv + 1} UNLOCKED`; P.appendChild(u); btn(`CONTINUE TO LEVEL ${lv + 1}`, 'g', () => this.on.level(lv + 1, true)); btn(`RESTART LEVEL ${lv}`, 'y', () => this.on.level(lv, true)); }
+      else btn('PLAY AGAIN', 'g', () => this.on.level(lv, true));
+    }
     btn('RECORD', 'b', () => this.record(back)); btn('SETTINGS', kind === 'title' || kind === 'pause' ? 'y' : 'b', () => this.settings(back));
     btn(kind === 'title' ? 'QUIT' : 'MAIN MENU', 'r', () => this.on.quit());
     root.replaceChildren(P);
@@ -67,7 +78,15 @@ export const menu = {
     sl.oninput = () => { settings.shake = Number(sl.value); fx.scale = settings.shake; show(); save(); }; P.appendChild(sl);
     const aa = document.createElement('button'); aa.className = 'm-btn b'; const showAA = () => (aa.textContent = 'AIM ASSIST: ' + (settings.aimAssist ? 'ON' : 'OFF')); showAA();
     aa.onclick = () => { settings.aimAssist = !settings.aimAssist; showAA(); save(); }; P.appendChild(aa);
-    const reset = document.createElement('button'); reset.className = 'm-btn r'; reset.textContent = 'RESET PROGRESS'; reset.onclick = () => { if (confirm('Erase checkpoint progress and all records?')) { sessionStorage.removeItem('sky_cp'); Object.assign(stats, S0); save(); location.reload(); } }; P.appendChild(reset);
+    const lv = document.createElement('div'); lv.className = 'm-set'; lv.textContent = 'LEVEL'; P.appendChild(lv);
+    const lrow = document.createElement('div'); lrow.className = 'm-lv'; P.appendChild(lrow);
+    for (const [n, name, bg] of [[1, 'DAYLIGHT', 'linear-gradient(#8fd8ee,#4f9a2a)'], [2, 'NIGHT', 'linear-gradient(#0b1030,#2b3a86)']] as const) {          // preview = public/art/level<N>.jpg (falls back to the gradient)
+      const locked = n > stats.unlocked, c = document.createElement('button'); c.className = 'm-card' + (n === LEVEL ? ' sel' : '') + (locked ? ' lock' : ''); c.style.background = bg;
+      const im = document.createElement('img'); im.src = `art/level${n}.jpg`; im.onerror = () => im.remove(); c.appendChild(im);
+      const sp = document.createElement('span'); sp.textContent = locked ? `🔒 LEVEL ${n}` : `LEVEL ${n} · ${name}`; c.appendChild(sp);
+      c.onclick = () => { if (!locked && n !== LEVEL) this.on.level(n); }; lrow.appendChild(c);
+    }
+    const reset = document.createElement('button'); reset.className = 'm-btn r'; reset.textContent = 'RESET PROGRESS'; reset.onclick = () => { if (confirm('Erase checkpoint progress and all records?')) { sessionStorage.removeItem('sky_cp'); Object.assign(stats, S0); settings.level = 1; save(); location.reload(); } }; P.appendChild(reset);
     const b = document.createElement('button'); b.className = 'm-btn g'; b.textContent = 'BACK'; b.onclick = back; P.appendChild(b); root.replaceChildren(P); b.focus();
   },
 };

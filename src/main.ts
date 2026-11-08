@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { makeComposer, GRADE } from './grade';
-import { NIGHT, THEME } from './theme';
+import { NIGHT, LEVEL, THEME } from './theme';
 import { Ambient } from './ambient';
+import { PlantTrap } from './plants';
+import { addDecor } from './decor';
 import { poll, isTouch, inp } from './input';
 import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
@@ -15,7 +17,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'h
 renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
-const scene = new THREE.Scene(); scene.background = new THREE.Color(PAL.sky); scene.fog = new THREE.Fog(PAL.sky, THEME.fog[0], THEME.fog[1]);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(PAL.sky); scene.fog = new THREE.Fog(THEME.fogColor, THEME.fog[0], THEME.fog[1]);
 const cam = new THREE.PerspectiveCamera(38, 1, 0.1, 120); cam.position.set(2, 5, 17);
 const sun = new THREE.DirectionalLight(THEME.sun[0], THEME.sun[1]); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 16, bottom: -16, near: 1, far: 60 }); scene.add(sun, sun.target);
@@ -28,6 +30,7 @@ addEventListener('resize', resize); resize();
 
 const MAP = buildMap();
 const lvl = new Level(scene, MAP.rects, MAP.len + 10);
+if (NIGHT) addDecor(scene, lvl);
 const player = new Player(scene), bul = new Bullets(scene), hz = new Hazards(scene);
 // Resume from the last checkpoint after a reload / R (kept in sessionStorage). Debug: ?cp=2 starts at checkpoint 2.
 const qs = new URLSearchParams(location.search); let cpIdx = Number(qs.get('cp') ?? sessionStorage.getItem('sky_cp') ?? 0);
@@ -37,7 +40,8 @@ let respawn = { x: cpIdx > MAP.checkpoints.length ? MAP.arenaX + 10 : cpIdx > 0 
 type Ent<T extends { alive: boolean }> = { x: number; make: () => T; o?: T };
 const foes: Ent<Soldier>[] = MAP.foes.filter(f => f.x > respawn.x - 20).map(f => ({ x: f.x, make: () => new Soldier(scene, f.x, f.y, Math.max(0.8, f.r), f.elite ? CLUB_ELITE : CLUB_OPT) }));
 const dragons: Ent<Dragon>[] = MAP.dragons.filter(d => d.x > respawn.x - 20).map(d => ({ x: d.x, make: () => new Dragon(scene, d.x, d.y, d.v) }));
-const saws = MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new Saw(scene, w.x, w.y, w.rx));
+const saws = NIGHT ? [] : MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new Saw(scene, w.x, w.y, w.rx));
+const plants = NIGHT ? MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new PlantTrap(scene, w.x, w.y - (w.rx > 0 ? 0.9 : 0.45))) : [];   // level 2: monster plants instead of saws
 const stream = <T extends { alive: boolean }>(list: Ent<T>[], vis: (o: T, on: boolean) => void, step: (o: T) => void) => {
   for (const e of list) { const d = Math.abs(e.x - player.x); if (!e.o && d < 55) e.o = e.make(); if (e.o?.alive) { const on = d < 40; vis(e.o, on); if (on) step(e.o); } }
 };
@@ -58,12 +62,18 @@ const play = () => { menu.close(); paused = false; if (!started) { started = tru
 const reloadAuto = () => { sessionStorage.setItem('sky_auto', '1'); save(); location.reload(); };
 menu.on.play = play; menu.on.resume = () => { menu.close(); paused = false; };
 menu.on.restart = reloadAuto; menu.on.newGame = () => { sessionStorage.removeItem('sky_cp'); reloadAuto(); };
+// pick a level (Settings) or move on after a win: remember it, start it fresh (auto = skip the title screen)
+menu.on.level = (n, auto) => {
+  if (!auto && started && !over && !confirm('Switch level? Your current run restarts.')) return;
+  settings.level = n; sessionStorage.removeItem('sky_cp'); history.replaceState(null, '', location.pathname);
+  if (auto) reloadAuto(); else { sessionStorage.removeItem('sky_auto'); save(); location.reload(); }
+};
 menu.on.quit = () => { if (!started && !over) { window.close(); say('You can close this tab'); } else { sessionStorage.removeItem('sky_auto'); save(); location.reload(); } };
 menu.on.pause = () => { if (started && !over && !paused) { paused = true; menu.open('pause'); } };
 addEventListener('keydown', e => { if (e.code === 'Escape' || e.code === 'KeyP') { if (menu.isOpen && started && !over) menu.on.resume(); else menu.on.pause(); } });
 addEventListener('blur', () => menu.on.pause());
 addEventListener('pagehide', save);
-if (sessionStorage.getItem('sky_auto')) { sessionStorage.removeItem('sky_auto'); play(); } else menu.open('title', { cp: cpIdx });
+if (sessionStorage.getItem('sky_auto')) { sessionStorage.removeItem('sky_auto'); play(); } else menu.open('title', { cp: cpIdx, level: LEVEL });
 const amb = NIGHT ? new Ambient(scene) : null;
 const clock = new THREE.Clock();
 (function loop() {
@@ -83,6 +93,7 @@ const clock = new THREE.Clock();
     stream(foes, (o, on) => { o.spr.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
     stream(dragons, (o, on) => { if (o.d3) o.d3.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, hz, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
     for (const w of saws) if (Math.abs(w.x - player.x) < 40) w.update(dt, player);
+    for (const w of plants) { const d = Math.abs(w.x - player.x); w.g.visible = d < 45; if (d < 40) w.update(dt, player); }
     for (const [i, f] of flags.entries()) if (!f.on && player.x > f.x) { f.on = true; cpIdx = i + 1; stats.cp = Math.max(stats.cp, cpIdx); respawn = { x: f.x, y: 3 }; sessionStorage.setItem('sky_cp', String(cpIdx)); (f.cloth.material as THREE.MeshBasicMaterial).color.set(0x40ff70);
       fx.burst(f.x + 0.6, 4.5, new THREE.Color(0.5, 3, 0.8), 30, 6, 3, 8, 0.9); say(`CHECKPOINT ${cpIdx} / ${flags.length}`); }
     toastT -= dt; if (toastT < 0) toast.style.opacity = '0';
@@ -91,10 +102,10 @@ const clock = new THREE.Clock();
     score += boss.update(dt, player, bul, lvl, hz); hz.update(dt, player, lvl); lvl.update(dt);
     if (player.y < -8) { player.hp--; player.x = safe.x - Math.sign(player.vx || 1) * 1.2; player.y = safe.y; player.vy = 0; player.inv = 1.2; }     // fell: back to the last firm ground (not the start)
     if (player.hp <= 0) { over = true; stats.deaths++; stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.3; }
-    if (boss.dead) { over = true; stats.wins++; stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.8; sessionStorage.removeItem('sky_cp'); }
+    if (boss.dead) { over = true; stats.wins++; if (LEVEL === 1) stats.unlocked = Math.max(stats.unlocked, 2); stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.8; sessionStorage.removeItem('sky_cp'); }
   }
   if (over && player.hp <= 0) player.animOnly(dt, lvl);
-  if (over && overT > 0 && (overT -= dt) <= 0) menu.open(player.hp <= 0 ? 'over' : 'win', { score });
+  if (over && overT > 0 && (overT -= dt) <= 0) menu.open(player.hp <= 0 ? 'over' : 'win', { score, level: LEVEL });
   ($('hp').firstChild as HTMLElement).style.width = Math.max(0, player.hp / 5 * 100) + '%';
   ($('boss').firstChild as HTMLElement).style.width = (boss.shieldHp > 0 ? boss.shieldHp / 14 * 50 + 50 : boss.hp / 30 * 50) + '%';
   $('score').textContent = String(score);
