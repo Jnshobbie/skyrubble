@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { makeComposer } from './grade';
+import { makeComposer, GRADE } from './grade';
+import { NIGHT, THEME } from './theme';
+import { Ambient } from './ambient';
 import { poll, isTouch, inp } from './input';
 import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
@@ -13,11 +15,12 @@ const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'h
 renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
-const scene = new THREE.Scene(); scene.background = new THREE.Color(PAL.sky); scene.fog = new THREE.Fog(PAL.sky, 14, 75);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(PAL.sky); scene.fog = new THREE.Fog(PAL.sky, THEME.fog[0], THEME.fog[1]);
 const cam = new THREE.PerspectiveCamera(38, 1, 0.1, 120); cam.position.set(2, 5, 17);
-const sun = new THREE.DirectionalLight(0xffe2b0, 2.6); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+const sun = new THREE.DirectionalLight(THEME.sun[0], THEME.sun[1]); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
 Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 16, bottom: -16, near: 1, far: 60 }); scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight(0x9fd9ff, 0x5a7a3a, 1.1));
+scene.add(new THREE.HemisphereLight(THEME.hemi[0], THEME.hemi[1], THEME.hemi[2]));
+Object.assign(GRADE, THEME.grade);
 const comp = makeComposer(renderer, scene, cam, isTouch);
 fx.init(scene);
 function resize() { renderer.setSize(innerWidth, innerHeight); comp.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
@@ -61,6 +64,7 @@ addEventListener('keydown', e => { if (e.code === 'Escape' || e.code === 'KeyP')
 addEventListener('blur', () => menu.on.pause());
 addEventListener('pagehide', save);
 if (sessionStorage.getItem('sky_auto')) { sessionStorage.removeItem('sky_auto'); play(); } else menu.open('title', { cp: cpIdx });
+const amb = NIGHT ? new Ambient(scene) : null;
 const clock = new THREE.Clock();
 (function loop() {
   requestAnimationFrame(loop);
@@ -99,6 +103,7 @@ const clock = new THREE.Clock();
   camY += (Math.max(4.5, player.y + 2.5) - camY) * Math.min(1, 3 * dt);
   fx.focusX = player.x; const sh = fx.update(dt);                  // particles + camera shake (offset is added after smoothing so it never feeds back)
   cam.position.set(camX + sh.x, camY + sh.y, 17); cam.lookAt(camX + sh.x, camY - 0.5 + sh.y, 0);
+  amb?.update(dt, player.x, player.y, camX, camY);
   sun.position.set(player.x + 12, 24, 14); sun.target.position.set(player.x, 4, 0);
   comp.render(dt);
 })();
