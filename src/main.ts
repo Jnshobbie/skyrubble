@@ -28,7 +28,7 @@ fx.init(scene);
 function resize() { renderer.setSize(innerWidth, innerHeight); comp.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
-const MAP = buildMap();
+const MAP = buildMap(NIGHT);
 const lvl = new Level(scene, MAP.rects, MAP.len + 10);
 if (NIGHT) addDecor(scene, lvl);
 const player = new Player(scene), bul = new Bullets(scene), hz = new Hazards(scene);
