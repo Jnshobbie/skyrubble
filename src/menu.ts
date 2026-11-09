@@ -51,6 +51,7 @@ export const menu = {
       title('SKYRUBBLE', 'LEVEL ' + (info.level ?? 1)); const cp = info.cp ?? 0;
       btn(cp > 3 ? 'CONTINUE (BOSS FIGHT)' : cp > 0 ? `CONTINUE (CHECKPOINT ${cp})` : 'PLAY', 'g', () => this.on.play());
       if (cp > 0) btn('NEW GAME', 'y', () => this.on.newGame());
+      btn('SELECT', 'b', () => this.select(back));
     } else if (kind === 'pause') { title('PAUSED'); btn('RESUME', 'g', () => this.on.resume()); btn('RESTART', 'y', () => this.on.restart()); }
     else if (kind === 'over') { title('GAME OVER', 'SCORE ' + (info.score ?? 0)); btn('RETRY', 'g', () => this.on.restart()); }
     else {
@@ -70,6 +71,22 @@ export const menu = {
     for (const [a, b] of rows) { const r = document.createElement('div'); r.className = 'm-row'; r.innerHTML = `<span>${a}</span><b>${b}</b>`; P.appendChild(r); }
     const b = document.createElement('button'); b.className = 'm-btn g'; b.textContent = 'BACK'; b.onclick = back; P.appendChild(b); root.replaceChildren(P); b.focus();
   },
+  select(back: () => void) {
+    const P = document.createElement('div'); P.className = 'm-panel'; const t = document.createElement('div'); t.className = 'm-title'; t.textContent = 'SELECT'; P.appendChild(t);
+    const lb = document.createElement('button'); lb.className = 'm-btn g'; lb.textContent = 'LEVEL'; lb.onclick = () => this.levels(() => this.select(back)); P.appendChild(lb);
+    const b = document.createElement('button'); b.className = 'm-btn r'; b.textContent = 'BACK'; b.onclick = back; P.appendChild(b); root.replaceChildren(P); lb.focus();
+  },
+  levels(back: () => void) {
+    const P = document.createElement('div'); P.className = 'm-panel'; const t = document.createElement('div'); t.className = 'm-title'; t.textContent = 'LEVEL'; P.appendChild(t);
+    const row = document.createElement('div'); row.className = 'm-lv'; P.appendChild(row);
+    for (const [n, name, bg] of [[1, 'DAYLIGHT', 'linear-gradient(#8fd8ee,#4f9a2a)'], [2, 'NIGHT', 'linear-gradient(#0b1030,#2b3a86)']] as const) {          // preview = public/art/level<N>.jpg (falls back to the gradient)
+      const locked = n > stats.unlocked, c = document.createElement('button'); c.className = 'm-card' + (n === LEVEL ? ' sel' : '') + (locked ? ' lock' : ''); c.style.background = bg;
+      const im = document.createElement('img'); im.src = `art/level${n}.jpg`; im.onerror = () => im.remove(); c.appendChild(im);
+      const sp = document.createElement('span'); sp.textContent = locked ? `🔒 LEVEL ${n}` : `LEVEL ${n} · ${name}`; c.appendChild(sp);
+      c.onclick = () => { if (!locked && n !== LEVEL) this.on.level(n); }; row.appendChild(c);
+    }
+    const b = document.createElement('button'); b.className = 'm-btn g'; b.textContent = 'BACK'; b.onclick = back; P.appendChild(b); root.replaceChildren(P); (row.querySelector('.m-card:not(.lock)') as HTMLElement | null)?.focus();
+  },
   settings(back: () => void) {
     const P = document.createElement('div'); P.className = 'm-panel'; const t = document.createElement('div'); t.className = 'm-title'; t.textContent = 'SETTINGS'; P.appendChild(t);
     const lab = document.createElement('div'); lab.className = 'm-set'; const val = document.createElement('b'); val.style.color = '#ffe27a'; lab.append('CAMERA SHAKE', val); P.appendChild(lab);
@@ -78,14 +95,6 @@ export const menu = {
     sl.oninput = () => { settings.shake = Number(sl.value); fx.scale = settings.shake; show(); save(); }; P.appendChild(sl);
     const aa = document.createElement('button'); aa.className = 'm-btn b'; const showAA = () => (aa.textContent = 'AIM ASSIST: ' + (settings.aimAssist ? 'ON' : 'OFF')); showAA();
     aa.onclick = () => { settings.aimAssist = !settings.aimAssist; showAA(); save(); }; P.appendChild(aa);
-    const lv = document.createElement('div'); lv.className = 'm-set'; lv.textContent = 'LEVEL'; P.appendChild(lv);
-    const lrow = document.createElement('div'); lrow.className = 'm-lv'; P.appendChild(lrow);
-    for (const [n, name, bg] of [[1, 'DAYLIGHT', 'linear-gradient(#8fd8ee,#4f9a2a)'], [2, 'NIGHT', 'linear-gradient(#0b1030,#2b3a86)']] as const) {          // preview = public/art/level<N>.jpg (falls back to the gradient)
-      const locked = n > stats.unlocked, c = document.createElement('button'); c.className = 'm-card' + (n === LEVEL ? ' sel' : '') + (locked ? ' lock' : ''); c.style.background = bg;
-      const im = document.createElement('img'); im.src = `art/level${n}.jpg`; im.onerror = () => im.remove(); c.appendChild(im);
-      const sp = document.createElement('span'); sp.textContent = locked ? `🔒 LEVEL ${n}` : `LEVEL ${n} · ${name}`; c.appendChild(sp);
-      c.onclick = () => { if (!locked && n !== LEVEL) this.on.level(n); }; lrow.appendChild(c);
-    }
     const reset = document.createElement('button'); reset.className = 'm-btn r'; reset.textContent = 'RESET PROGRESS'; reset.onclick = () => { if (confirm('Erase checkpoint progress and all records?')) { sessionStorage.removeItem('sky_cp'); Object.assign(stats, S0); settings.level = 1; save(); location.reload(); } }; P.appendChild(reset);
     const b = document.createElement('button'); b.className = 'm-btn g'; b.textContent = 'BACK'; b.onclick = back; P.appendChild(b); root.replaceChildren(P); b.focus();
   },

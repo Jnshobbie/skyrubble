@@ -86,6 +86,7 @@ const clock = new THREE.Clock();
       const t: { x: number; y: number }[] = [];
       for (const e of foes) if (e.o?.alive && e.o.st !== 'dying') t.push({ x: e.o.x, y: e.o.y + 1 });
       for (const e of dragons) if (e.o?.alive && !e.o.dying) t.push({ x: e.o.x, y: e.o.y });
+      for (const w of plants) if (w.alive) t.push({ x: w.x, y: w.y + 1.1 });
       if (boss.active && !boss.dead && boss.st !== 'defeat') t.push(boss.aimPoint());
       player.targets = t;
     }
@@ -93,7 +94,7 @@ const clock = new THREE.Clock();
     stream(foes, (o, on) => { o.spr.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
     stream(dragons, (o, on) => { if (o.d3) o.d3.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, hz, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
     for (const w of saws) if (Math.abs(w.x - player.x) < 40) w.update(dt, player);
-    for (const w of plants) { const d = Math.abs(w.x - player.x); w.g.visible = d < 45; if (d < 40) w.update(dt, player); }
+    for (const w of plants) { const d = Math.abs(w.x - player.x); w.g.visible = w.alive && d < 45; if (w.alive && d < 40) { const g = w.update(dt, player, bul, lvl); score += g; if (g > 0) { stats.kills++; stats.score += g; } } }
     for (const [i, f] of flags.entries()) if (!f.on && player.x > f.x) { f.on = true; cpIdx = i + 1; stats.cp = Math.max(stats.cp, cpIdx); respawn = { x: f.x, y: 3 }; sessionStorage.setItem('sky_cp', String(cpIdx)); (f.cloth.material as THREE.MeshBasicMaterial).color.set(0x40ff70);
       fx.burst(f.x + 0.6, 4.5, new THREE.Color(0.5, 3, 0.8), 30, 6, 3, 8, 0.9); say(`CHECKPOINT ${cpIdx} / ${flags.length}`); }
     toastT -= dt; if (toastT < 0) toast.style.opacity = '0';
