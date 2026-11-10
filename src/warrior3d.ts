@@ -22,7 +22,7 @@ export function slamPose(t: number) {
   if (t < windup + strike + hold) return HIT;
   return mix(HIT, REST, ease(Math.min(1, (t - windup - strike - hold) / (total - windup - strike - hold))));
 }
-type Shared = { parts: Record<string, THREE.BufferGeometry>; tex: { body: THREE.MeshStandardMaterial; hair: THREE.MeshStandardMaterial }; hair: THREE.BufferGeometry };
+type Shared = { parts: Record<string, THREE.BufferGeometry>; tex: { body: THREE.Material; hair: THREE.Material }; hair: THREE.BufferGeometry };
 let cache: Promise<Shared> | null = null, haloTex: THREE.CanvasTexture | null = null;
 /** Splits the loaded model into named pieces, each geometry already shifted so its pivot is at the origin. Exported for tests. */
 export function splitWarrior(pos: ArrayLike<number>, idx: ArrayLike<number> | null, body: THREE.BufferGeometry) {
@@ -50,7 +50,7 @@ const shared = () => (cache ??= new GLTFLoader().loadAsync('models/almost_a_hero
   legs.forEach((t, i) => { const cx = (lp.getX(i * 3) + lp.getX(i * 3 + 1) + lp.getX(i * 3 + 2)) / 3; (cx < 0 ? left : right).push(t); });
   mk('legL', left, new THREE.Vector3(-LEG_X, HIP_Y, 0)); mk('legR', right, new THREE.Vector3(LEG_X, HIP_Y, 0));
   const hg = hairM!.geometry.clone().applyMatrix4(hairM!.matrixWorld); hg.translate(-HEAD_P.x, -HEAD_P.y, -HEAD_P.z); hg.morphAttributes = hairM!.geometry.morphAttributes; hg.morphTargetsRelative = hairM!.geometry.morphTargetsRelative;
-  return { parts, tex: { body: bodyM!.material as THREE.MeshStandardMaterial, hair: hairM!.material as THREE.MeshStandardMaterial }, hair: hg };
+  return { parts, tex: { body: bodyM!.material as THREE.Material, hair: hairM!.material as THREE.Material }, hair: hg };
 }));
 const halo = () => haloTex ??= (() => {
   const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d')!, r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -70,7 +70,7 @@ export class Warrior3D {
     this.aura.position.set(0, look.h * 0.5, -0.5); this.inner.add(this.aura);
     this.hips.position.y = 0; this.rig.add(this.hips);
     shared().then(({ parts, tex, hair }) => {
-      const mat = (src: THREE.MeshStandardMaterial) => { const m = src.clone(); m.metalness = 0; m.roughness = 0.85; if (m.map) { m.emissiveMap = m.map; m.emissive.copy(look.glow); m.emissiveIntensity = GLOW; } this.mats.push(m); return m; };
+      const mat = (src: THREE.Material) => { const u = src as THREE.MeshBasicMaterial, m = new THREE.MeshStandardMaterial({ map: u.map, side: u.side, transparent: u.transparent, opacity: u.opacity, alphaTest: u.alphaTest }); m.metalness = 0; m.roughness = 0.85; if (m.map) { m.emissiveMap = m.map; m.emissive.copy(look.glow); m.emissiveIntensity = GLOW; } this.mats.push(m); return m; };
       const body = mat(tex.body), mk = (n: string) => { const me = new THREE.Mesh(parts[n], body); me.frustumCulled = false; return me; };
       this.upper.position.set(0, HIP_Y, 0); this.hips.add(this.upper, this.legL, this.legR);
       this.legL.position.set(-LEG_X, HIP_Y, 0); this.legR.position.set(LEG_X, HIP_Y, 0); this.legL.add(mk('legL')); this.legR.add(mk('legR'));

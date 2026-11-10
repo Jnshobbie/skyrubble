@@ -10,10 +10,11 @@ canvas{display:block}
 #score{position:fixed;top:6px;left:50%;transform:translateX(-50%);color:#fff;font:900 28px system-ui;text-shadow:0 2px 0 #0007}
 #msg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;color:#fff;font:900 56px system-ui;text-shadow:0 4px 0 #0008;text-align:center}
 #touch{display:none}
-#touch button{position:fixed;bottom:22px;width:78px;height:78px;border-radius:50%;border:3px solid #fff9;background:#0004;color:#fff;font:700 22px system-ui}
-#bl{left:18px}#br{left:110px}#bj{right:110px}#bf{right:18px}
-#bu,#bd{width:58px!important;height:58px!important;right:34px;font-size:18px!important}#bu{bottom:112px!important}#bd{bottom:176px!important}
+#ring{display:none;position:fixed;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:3px solid #3aa0ffcc;background:#3aa0ff22;box-shadow:0 0 14px #3aa0ff88;pointer-events:none}
+#dot{position:absolute;left:50%;top:50%;width:46px;height:46px;border-radius:50%;background:#3aa0ffaa;transform:translate(-50%,-50%)}
+#fire{position:fixed;right:calc(28px + env(safe-area-inset-right));bottom:calc(28px + env(safe-area-inset-bottom));width:112px;height:112px;border-radius:50%;border:3px solid #3aa0ffcc;background:#3aa0ff22;box-shadow:0 0 14px #3aa0ff66;color:#fff;font:900 34px/112px system-ui;text-align:center;pointer-events:none}
+#fire.on{background:#3aa0ff77}
 </style></head><body>
 <div class="bar" id="hp"><i></i></div><div id="score">0</div><div class="bar" id="boss"><i></i></div><div id="msg"></div>
-<div id="touch"><button id="bl">◀</button><button id="br">▶</button><button id="bj">⤒</button><button id="bf">✦</button><button id="bu">▲</button><button id="bd">▼</button></div>
+<div id="touch"><div id="ring"><div id="dot"></div></div><div id="fire">✦</div></div>
 <script type="module" src="/src/main.ts"></script></body></html>

@@ -66,6 +66,12 @@ export class Dragon {
     for (const s of [-1, 1]) { const w = mk(new THREE.BoxGeometry(1.4, 0.06, 0.8), 0x7a1a6a); w.position.set(-0.1, 0.4, s * 0.9); this.wings.push(w); this.m.add(w); }
     scene.add(this.m);
   }
+  private boom = false;
+  /** Phantom death explosion: bright blue burst + ring + white flash sparks, camera shake; the body vanishes. */
+  private explode() {
+    this.boom = true; const c = (this.d3 as Phantom3D).fire; this.d3!.mesh.visible = false;
+    fx.impact(this.x, this.y, c); fx.impact(this.x + 0.5, this.y + 0.3, c); fx.burst(this.x, this.y, c.clone().multiplyScalar(1.2), 60, 11, 4, 10, 0.9); fx.burst(this.x, this.y, new THREE.Color(2, 2.2, 3), 24, 6, 2, 8, 0.45); fx.shake(0.3, this.x);
+  }
   private remove() { this.alive = false; this.scene.remove(this.d3 ? this.d3.mesh : this.m); }
   /** Keep the dragon's body out of terrain: if its box overlaps a block stack, move to whichever side (over or under) is closer. */
   private avoid(lvl: Level, x: number, y: number) {
@@ -83,6 +89,7 @@ export class Dragon {
     if (this.dying > 0) {                                              // shot down: tumble and fall, then vanish (0.7s)
       this.dying += dt; this.vy -= 30 * dt; this.y += this.vy * dt; this.x += Math.sign(p.x - this.x) * -2 * dt;
       this.d3?.update(dt, 0, true); this.d3?.set(this.x, this.y, 0.2, p.x > this.x ? 1 : -1);
+      if (this.d3 instanceof Phantom3D) { this.d3.mesh.scale.setScalar(Math.max(0.05, 1 - this.dying / 0.5 * 0.4)); if (this.dying > 0.5 && !this.boom) this.explode(); }   // phantom: spins, then blows up
       if (this.dying > 0.7 || this.y < -8) { lvl.burst(this.x, this.y, 8); this.remove(); } return 0;
     }
     this.t += dt; const x = this.bx + Math.sin(this.t * 0.6) * 5, want = this.avoid(lvl, x, this.by + Math.sin(this.t * 1.3) * 1.2);
