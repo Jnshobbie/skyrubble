@@ -15,9 +15,9 @@ const DAY: Theme = {
 };
 // NIGHT: tweak these to change the whole mood. bush / bushPink are HDR tints (values above 1 make the leaves glow through the bloom).
 const NITE: Theme = {
-  sky: 0x0b1030, fogColor: 0x2b3a86, fog: [18, 52], lum: true, edge: 0x000000, edgeI: 0, grassTint: new THREE.Color(0x4f7a8c), hemi: [0x4a5cb0, 0x1a1840, 0.9], sun: [0x8fa8ff, 1.3],
+  sky: 0x0b1030, fogColor: 0x0b1030, fog: [10, 62], lum: true, edge: 0x000000, edgeI: 0, grassTint: new THREE.Color(0x4f7a8c), hemi: [0x4a5cb0, 0x1a1840, 0.9], sun: [0x8fa8ff, 1.3],
   grade: { saturation: 0.15, contrast: 0.18, brightness: -0.03, bloom: 0.95, vignette: 0.7 },
-  tint: 0x4f7a8c, stone: 0x5b6190, far: { cols: [0x1c2a66, 0x25347a, 0x2e3f8c], ops: [0.75, 0.6, 0.45] }, mist: [70, 90, 170], rock: 0x2a3050,
+  tint: 0x4f7a8c, stone: 0x5b6190, far: { cols: [0x1c2a66, 0x25347a, 0x2e3f8c], ops: [0.75, 0.6, 0.45] }, mist: [28, 36, 90], rock: 0x2a3050,
   grass: 0x2e5a60, block: 0x30344f, trunk: 0x181830, bush: new THREE.Color(0.2, 0.8, 1.8), bushPink: new THREE.Color(1.8, 0.45, 1.3),
 };
 export const THEME: Theme = NIGHT ? NITE : DAY;

@@ -7,7 +7,7 @@ import { isTouch } from './input';
 const GLOW_COLOR = 0x9fd8ee, GLOW_LIGHT = 14, GLOW_HALO = 0.22;                  // light on the world, and the soft halo drawn over it
 const LEAVES = isTouch ? 36 : 64, BUTTERFLIES = isTouch ? 3 : 5;
 const BUTTERFLY_SIZE = 0.7, BUTTERFLY_YAW = 0, BUTTERFLY_TILT = 1.0;              // size (biggest side, world units); yaw offset if it flies backwards; tilt shows the wings to the camera
-const MIST = 0x7f9cff;                                                           // colour of the drifting mist bands
+const MIST = 0x7f9cff, MIST_AMOUNT = 0;                                         // colour of the drifting mist bands, and how strong they are (0 = none, 1 = the old full fog; try 0.3 for a hint)
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 type Fly = { g: THREE.Group; mx: THREE.AnimationMixer; hx: number; hy: number; a: number; b: number; ph: number; rx: number; ry: number; x: number; y: number; z: number; yaw: number };
 type Leaf = { x: number; y: number; z: number; v: number; ph: number; sp: number; rot: number };
@@ -34,8 +34,8 @@ export class Ambient {
     const mt = new THREE.CanvasTexture(mc); mt.wrapS = mt.wrapT = THREE.RepeatWrapping; mt.colorSpace = THREE.SRGBColorSpace; mt.repeat.set(2.2, 1);
     for (const [z, y, op, sp, pf] of [[-2.6, 3.2, 0.32, 0.012, 1], [-9, 5.5, 0.27, 0.007, 0.7], [-17, 8, 0.22, 0.004, 0.4]]) {
       const t = mt.clone(); t.needsUpdate = true;
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(64, 9), new THREE.MeshBasicMaterial({ map: t, color: MIST, transparent: true, opacity: op, depthWrite: false, fog: false }));
-      mesh.position.set(0, y, z); mesh.renderOrder = -8; scene.add(mesh); this.bands.push({ mesh, t, sp, pf });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(64, 9), new THREE.MeshBasicMaterial({ map: t, color: MIST, transparent: true, opacity: op * MIST_AMOUNT, depthWrite: false, fog: false }));
+      mesh.visible = MIST_AMOUNT > 0; mesh.position.set(0, y, z); mesh.renderOrder = -8; scene.add(mesh); this.bands.push({ mesh, t, sp, pf });
     }
     // butterflies
     new GLTFLoader().load('models/glowing_butterfly_animation.glb', gltf => {

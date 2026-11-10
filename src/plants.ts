@@ -10,12 +10,15 @@ import type { Level } from './level';
 const HP = 5, SCORE = 250, SELF = 0.9;                              // hits to kill, points, how much the whole plant lights itself
 const H = 2.1, REACH = 5.0, HIT_R = 0.8;                            // height (tiles), trigger distance (tiles), hurt radius around head / hands
 const ATK_SPEED = 1.3, ATK_ON = 0.5, ATK_OFF = 2.2;                 // attack playback speed, and which part of the clip (seconds, clip time) can hurt you
+const MOVE = ['Neck', 'Head'];                                        // bones the attack moves: only the head (the spine tracks were made to compensate the hips flip, so alone they just make the body wobble). Add 'Spine2' for a slight lean, or the arm bones to let them swing
 const FACE = 0;                                                     // if it turns the wrong way: set to Math.PI (the model's front is assumed to be +z, towards the camera)
-type Shared = { g: GLTF; bb: THREE.Box3; atk: THREE.AnimationClip | null };
+type Shared = { g: GLTF; bb: THREE.Box3; atk: THREE.AnimationClip | null; base: THREE.AnimationClip | null; top: THREE.AnimationClip | null };
 let cache: Promise<Shared> | null = null, haloTex: THREE.CanvasTexture | null = null;
 const shared = () => (cache ??= new GLTFLoader().loadAsync('models/monster_plant-rigged.glb').then(async g => {
-  const atk = await fetch('models/plant_attack.json').then(r => r.json()).then(j => THREE.AnimationClip.parse(j)).catch(e => { console.warn('plants: no attack clip', e); return null; });
-  g.scene.updateMatrixWorld(true); return { g, bb: new THREE.Box3().setFromObject(g.scene), atk };
+  const bone = (t: THREE.KeyframeTrack) => t.name.split('.')[0], keep = (c: THREE.AnimationClip, inMove: boolean) => new THREE.AnimationClip(c.name, c.duration, c.tracks.filter(t => MOVE.includes(bone(t)) === inMove));
+  const atk = await fetch('models/plant_attack.json').then(r => r.json()).then(j => keep(THREE.AnimationClip.parse(j), true)).catch(e => { console.warn('plants: no attack clip', e); return null; });
+  const idle = g.animations.find(c => c.name === 'Idle') ?? g.animations[0]; g.scene.updateMatrixWorld(true);
+  return { g, bb: new THREE.Box3().setFromObject(g.scene), atk, base: idle ? keep(idle, false) : null, top: idle ? keep(idle, true) : null };   // idle split in two: body (always plays) + moving bones (hand over to the attack)
 }));
 const halo = () => haloTex ??= (() => {
   const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d')!, r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -25,13 +28,13 @@ const halo = () => haloTex ??= (() => {
 type St = 'idle' | 'attack' | 'recover';
 export class PlantTrap {
   g = new THREE.Group(); private inner = new THREE.Group(); t = Math.random() * 6; alive = true; hp = HP; st: St = 'idle'; ts = 0; cd = 1 + Math.random(); dir = 1; flash = 0; private yaw = 0;
-  private mixer?: THREE.AnimationMixer; private idle?: THREE.AnimationAction; private atk?: THREE.AnimationAction; private mats: THREE.MeshStandardMaterial[] = [];
+  private mixer?: THREE.AnimationMixer; private idle?: THREE.AnimationAction; private base?: THREE.AnimationAction; private atk?: THREE.AnimationAction; private mats: THREE.MeshStandardMaterial[] = [];
   private bones: THREE.Object3D[] = []; private aura: THREE.Mesh; private v = new THREE.Vector3();
   constructor(private scene: THREE.Scene, public x: number, public y: number) {          // y = the platform surface it grows from
     this.g.position.set(x, y - 0.05, 0.1); this.g.add(this.inner); scene.add(this.g);
     this.aura = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 3.6), new THREE.MeshBasicMaterial({ map: halo(), color: new THREE.Color(1.4, 0.35, 2.2), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     this.aura.position.set(0, 1.0, -0.4); this.g.add(this.aura);
-    shared().then(({ g, bb, atk }) => {
+    shared().then(({ g, bb, atk, base, top }) => {
       const s = H / (bb.max.y - bb.min.y), m = clone(g.scene); m.scale.setScalar(s); m.position.y = -bb.min.y * s; this.inner.add(m);
       m.traverse(o => {
         const me = o as THREE.Mesh; if (!me.isMesh) return; me.frustumCulled = false;
@@ -39,9 +42,9 @@ export class PlantTrap {
         if (!mt.map && mt.emissiveMap) mt.map = mt.emissiveMap;                      // the GLB only lists its texture as emissive (spec-gloss data is ignored): use it as colour too
         mt.emissive.set(0xffffff); mt.emissiveIntensity = SELF; this.mats.push(mt); me.material = mt;
       });
-      for (const n of ['Head', 'LeftHand', 'RightHand']) { const b = m.getObjectByName(n); if (b) this.bones.push(b); }
+      for (const n of MOVE.includes('LeftHand') ? ['Head', 'LeftHand', 'RightHand'] : ['Head']) { const b = m.getObjectByName(n); if (b) this.bones.push(b); }
       this.mixer = new THREE.AnimationMixer(m); this.mixer.timeScale = 1;
-      const idle = g.animations.find(c => c.name === 'Idle') ?? g.animations[0]; if (idle) { this.idle = this.mixer.clipAction(idle); this.idle.time = Math.random() * idle.duration; this.idle.play(); }
+      if (base && top) { const t0 = Math.random() * top.duration; this.base = this.mixer.clipAction(base); this.idle = this.mixer.clipAction(top); for (const a of [this.base, this.idle]) { a.time = t0; a.play(); } }
       if (atk) { this.atk = this.mixer.clipAction(atk); this.atk.setLoop(THREE.LoopOnce, 1); this.atk.clampWhenFinished = true; this.atk.timeScale = ATK_SPEED; }
     });
   }
