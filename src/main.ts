@@ -7,7 +7,7 @@ import { addDecor } from './decor';
 import { poll, isTouch, inp } from './input';
 import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
-import { Soldier, Dragon, Hazards, Saw, CLUB_OPT, CLUB_ELITE } from './foes';
+import { Soldier, Dragon, Hazards, Saw, CLUB_OPT, CLUB_ELITE, WARRIOR_OPT, WARRIOR_ELITE_OPT } from './foes';
 import { Boss3D } from './boss3d';
 import { fx } from './fx';
 import { buildMap } from './map';
@@ -38,7 +38,7 @@ if (qs.has('cp')) sessionStorage.setItem('sky_cp', String(cpIdx));
 let respawn = { x: cpIdx > MAP.checkpoints.length ? MAP.arenaX + 10 : cpIdx > 0 ? MAP.checkpoints[cpIdx - 1] : 2, y: cpIdx > 0 ? 3 : 4 }; player.x = respawn.x; player.y = respawn.y; let camX = player.x, camY = 5;
 // Enemies are created lazily when the player gets within 55 tiles, updated + drawn only within 40 (the world is ~4x bigger now; keeps phones fast).
 type Ent<T extends { alive: boolean }> = { x: number; make: () => T; o?: T };
-const foes: Ent<Soldier>[] = MAP.foes.filter(f => f.x > respawn.x - 20).map(f => ({ x: f.x, make: () => new Soldier(scene, f.x, f.y, Math.max(0.8, f.r), f.elite ? CLUB_ELITE : CLUB_OPT) }));
+const foes: Ent<Soldier>[] = MAP.foes.filter(f => f.x > respawn.x - 20).map(f => ({ x: f.x, make: () => new Soldier(scene, f.x, f.y, Math.max(0.8, f.r), f.elite ? (NIGHT ? WARRIOR_ELITE_OPT : CLUB_ELITE) : (NIGHT ? WARRIOR_OPT : CLUB_OPT)) }));
 const dragons: Ent<Dragon>[] = MAP.dragons.filter(d => d.x > respawn.x - 20).map(d => ({ x: d.x, make: () => new Dragon(scene, d.x, d.y, d.v) }));
 const saws = NIGHT ? [] : MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new Saw(scene, w.x, w.y, w.rx));
 const plants = NIGHT ? MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new PlantTrap(scene, w.x, w.y - (w.rx > 0 ? 0.9 : 0.45))) : [];   // level 2: monster plants instead of saws

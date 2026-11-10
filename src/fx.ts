@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { vfxRing } from './ring';
 // Tiny shared effects layer: pooled additive sparks/dust (one draw call), expanding shockwave rings, and camera trauma/shake.
 // Usage: fx.init(scene) once; fx.burst()/fx.impact()/fx.dust() anywhere; fx.update(dt) every frame (returns the camera offset).
 const N = 700, RINGS = 6;
@@ -17,7 +18,7 @@ class Fx {
   private life = new Float32Array(N); private max = new Float32Array(N); private grav = new Float32Array(N); private base = new Float32Array(N * 3);
   private geo = new THREE.BufferGeometry(); private rings: { m: THREE.Mesh; t: number; c: THREE.Color }[] = []; private ri = 0;
   init(scene: THREE.Scene) {
-    if (this.ready) return; this.ready = true;
+    if (this.ready) return; this.ready = true; vfxRing.init(scene);
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); this.geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
     this.pos.fill(0, 0); for (let k = 0; k < N; k++) this.pos[k * 3 + 1] = -999;
     const pts = new THREE.Points(this.geo, new THREE.PointsMaterial({ size: 0.32, map: round(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
@@ -38,6 +39,7 @@ class Fx {
   /** Fireball hit: sparks + ring + a few embers. */
   impact(x: number, y: number, c: THREE.Color) {
     const n = c.clone().multiplyScalar(0.55); this.burst(x, y, n, 30, 7.5, 3, 16, 0.7); this.burst(x, y, new THREE.Color(1.6, 1.4, 1.1), 8, 4, 1, 10, 0.35);
+    if (vfxRing.play(x, y, c)) return;                                 // level 2: the anime_vfx rings; otherwise the simple ring below
     const r = this.rings[this.ri++ % RINGS]; r.t = 0; r.c.copy(n); r.m.position.set(x, y, 0.45); r.m.visible = true;
   }
   /** Dust cloud (monster slam / landing). */
@@ -55,7 +57,7 @@ class Fx {
     (this.geo.attributes.position as THREE.BufferAttribute).needsUpdate = true; (this.geo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
     for (const r of this.rings) { if (!r.m.visible) continue; r.t += dt / 0.35; if (r.t >= 1) { r.m.visible = false; continue; }
       const s = 0.3 + r.t * 1.9; r.m.scale.set(s, s, 1); (r.m.material as THREE.MeshBasicMaterial).color.copy(r.c).multiplyScalar(1 - r.t); }
-    this.trauma = Math.max(0, this.trauma - dt * 1.8); const m = this.trauma * this.trauma * SHAKE_MAX * this.scale;
+    vfxRing.update(dt); this.trauma = Math.max(0, this.trauma - dt * 1.8); const m = this.trauma * this.trauma * SHAKE_MAX * this.scale;
     return { x: (Math.random() * 2 - 1) * m, y: (Math.random() * 2 - 1) * m };
   }
 }

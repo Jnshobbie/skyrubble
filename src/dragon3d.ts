@@ -14,7 +14,7 @@ const shared = new Map<string, Promise<{ g: GLTF; bb: THREE.Box3 }>>();
 const loadShared = (url: string) => { let p = shared.get(url); if (!p) shared.set(url, p = new GLTFLoader().loadAsync(url).then(g => { g.scene.updateMatrixWorld(true); return { g, bb: new THREE.Box3().setFromObject(g.scene) }; })); return p; };
 export class Dragon3D {
   mesh = new THREE.Group(); private inner = new THREE.Group(); private mixer?: THREE.AnimationMixer; private flat: { m: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
-  private yaw = 0; private t = Math.random() * 6; private flash = 0; private spin = 0; mouth = new THREE.Vector3(0.9, 0, 0); fire: THREE.Color;
+  private yaw = 0; private t = Math.random() * 6; private flash = 0; private spin = 0; mouth = new THREE.Vector3(0.9, 0, 0); fire: THREE.Color; hitR = 1.0;
   constructor(scene: THREE.Scene, variant = 0) {
     const v = VARIANTS[variant % VARIANTS.length]; this.fire = v.fire.clone(); this.mesh.add(this.inner); scene.add(this.mesh);
     loadShared(v.url).then(({ g, bb }) => {
