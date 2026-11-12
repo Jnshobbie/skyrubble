@@ -77,6 +77,7 @@ addEventListener('blur', () => menu.on.pause());
 addEventListener('pagehide', save);
 if (sessionStorage.getItem('sky_auto')) { sessionStorage.removeItem('sky_auto'); play(); } else menu.open('title', { cp: cpIdx, level: LEVEL });
 const amb = NIGHT ? new Ambient(scene) : null;
+audio.ambient(LEVEL);
 const clock = new THREE.Clock();
 (function loop() {
   requestAnimationFrame(loop);
