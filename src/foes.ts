@@ -1,3 +1,4 @@
+import { audio } from './audio';
 import * as THREE from 'three';
 import { Level } from './level';
 import { Player, Bullets } from './player';
@@ -29,7 +30,7 @@ export class Hazards {
       if (Math.abs(h.m.position.x - p.x) < h.r + 0.35 && Math.abs(h.m.position.y - (p.y + 0.65)) < h.r + 0.65) { p.hurt(Math.sign(p.x - h.m.position.x) || 1); if (h.r > 0.3 || fire) { h.life = 0; if (fire) fx.impact(h.m.position.x, h.m.position.y, h.col!); } }
       if (h.life > 0 && lvl.solid(Math.floor(h.m.position.x), Math.floor(h.m.position.y)) && (fire || (h.r < 0.5 && h.vy !== 0))) {
         lvl.burst(h.m.position.x, h.m.position.y, 3); h.life = 0;
-        if (fire) { fx.impact(px, py, h.col!); fx.shake(0.4, px); }      // previous position = just outside the block, so sparks sit on its surface
+        if (fire) { fx.impact(px, py, h.col!); fx.shake(0.4, px); audio.sfx('boom', 0.6, px); }      // previous position = just outside the block, so sparks sit on its surface
       }
       if (h.life <= 0) this.scene.remove(h.m);
     }
@@ -48,7 +49,7 @@ export class Drone {
   update(dt: number, p: Player, bul: Bullets, lvl: Level, scene: THREE.Scene) {
     this.t += dt; const x = this.bx + Math.sin(this.t * 0.9) * this.range, y = this.by + Math.sin(this.t * 2.2) * 0.35;
     this.m.position.set(x, y, 0); this.m.rotation.y += dt * 3;
-    if (bul.hit(x, y, 0.8) && --this.hp <= 0) { this.alive = false; lvl.burst(x, y, 10); scene.remove(this.m); return 100; }
+    if (bul.hit(x, y, 0.8) && --this.hp <= 0) { this.alive = false; lvl.burst(x, y, 10); audio.sfx('boom', 0.5, x); scene.remove(this.m); return 100; }
     if (Math.hypot(p.x - x, p.y + 0.65 - y) < 0.95) p.hurt(Math.sign(p.x - x) || 1);
     return 0;
   }
@@ -69,7 +70,7 @@ export class Dragon {
   private boom = false;
   /** Phantom death explosion: bright blue burst + ring + white flash sparks, camera shake; the body vanishes. */
   private explode() {
-    this.boom = true; const c = (this.d3 as Phantom3D).fire; this.d3!.mesh.visible = false;
+    this.boom = true; audio.sfx('boom', 1, this.x); const c = (this.d3 as Phantom3D).fire; this.d3!.mesh.visible = false;
     fx.impact(this.x, this.y, c); fx.impact(this.x + 0.5, this.y + 0.3, c); fx.burst(this.x, this.y, c.clone().multiplyScalar(1.2), 60, 11, 4, 10, 0.9); fx.burst(this.x, this.y, new THREE.Color(2, 2.2, 3), 24, 6, 2, 8, 0.45); fx.shake(0.3, this.x);
   }
   private remove() { this.alive = false; this.scene.remove(this.d3 ? this.d3.mesh : this.m); }

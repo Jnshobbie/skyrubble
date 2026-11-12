@@ -1,3 +1,4 @@
+import { audio } from './audio';
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -78,7 +79,7 @@ export class Boss3D {
         if (a !== this.cur) { a.reset().fadeIn(0.2).play(); this.cur?.fadeOut(0.2); this.cur = a; } else a.reset().play();
         if (s === 'defeat') { a.time = 1.5; a.timeScale = 0; }                  // freeze in the wings-up pose while it falls apart from code
     }
-    enter(s: S, p: Player) { this.st = s; this.t = 0; this.fired = false; this.shotT = 0; this.pulses = 0; this.face = p.x < this.x ? -1 : 1; this.play(s); }
+    enter(s: S, p: Player) { if (s === 'roar' || s === 'enrage' || s === 'swoop') audio.sfx('roar'); else if (s === 'blast' || s === 'beam') audio.sfx('boom', 0.8); else if (s === 'defeat') { audio.sfx('roar'); audio.sfx('boom'); } this.st = s; this.t = 0; this.fired = false; this.shotT = 0; this.pulses = 0; this.face = p.x < this.x ? -1 : 1; this.play(s); }
     next(p: Player) {
         if (this.hp <= 0) return this.enter('defeat', p);
         const ch = CHAIN[this.phase];

@@ -12,6 +12,7 @@ import { Boss3D } from './boss3d';
 import { fx } from './fx';
 import { buildMap } from './map';
 import { menu, stats, save, settings } from './menu';
+import { audio } from './audio';
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
@@ -51,7 +52,8 @@ const FLAG_SCALE = 0.6;
 const flags = MAP.checkpoints.map((x, i) => { const g = new THREE.Group(), pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3, 6), new THREE.MeshStandardMaterial({ color: 0x4a3a30 })),
   cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.75), new THREE.MeshBasicMaterial({ color: i < cpIdx ? 0x40ff70 : 0xff3a4a, side: THREE.DoubleSide })); pole.position.y = 1.5; cloth.position.set(0.6, 2.55, 0); g.add(pole, cloth); g.position.set(x, 2, -0.5); g.scale.setScalar(FLAG_SCALE); scene.add(g); return { x, cloth, on: i < cpIdx }; });
 const toast = document.body.appendChild(document.createElement('div')); toast.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);color:#fff;font:900 30px system-ui;text-shadow:0 3px 0 #0008;opacity:0;transition:opacity .4s;pointer-events:none';
-let toastT = 0; const say = (t: string) => { toast.textContent = t; toast.style.opacity = '1'; toastT = 2.2; };
+const ROAR_RANGE = 120;                                    // tiles: how far away the final boss's roar can be heard (louder + clearer the closer you get)
+let roarT = 2, toastT = 0; const say = (t: string) => { toast.textContent = t; toast.style.opacity = '1'; toastT = 2.2; };
 let safe = { x: respawn.x, y: respawn.y };
 let score = 0, over = false;
 const $ = (id: string) => document.getElementById(id)!;
@@ -113,6 +115,8 @@ const clock = new THREE.Clock();
   if (paused && !started) { camX += (player.x + 6 + Math.sin(performance.now() / 4000) * 3 - camX) * Math.min(1, 1.5 * dt); }   // title: slow drift
   else camX += (player.x + player.face * 2.5 - camX) * Math.min(1, 4 * dt);
   camY += (Math.max(4.5, player.y + 2.5) - camY) * Math.min(1, 3 * dt);
+  if (!over && !paused && !boss.active) { const d = Math.abs(MAP.bossX - player.x); if (d < ROAR_RANGE && (roarT -= dt) <= 0) { audio.sfx('roar', 1, MAP.bossX, ROAR_RANGE); roarT = 5 + d / ROAR_RANGE * 9; } }   // distant roars before the boss fight, more often when closer
+  audio.update(dt, menu.isOpen, player.x, !over && !paused && player.ground && Math.abs(player.vx) > 1);
   fx.focusX = player.x; const sh = fx.update(dt);                  // particles + camera shake (offset is added after smoothing so it never feeds back)
   cam.position.set(camX + sh.x, camY + sh.y, 17); cam.lookAt(camX + sh.x, camY - 0.5 + sh.y, 0);
   amb?.update(dt, player.x, player.y, camX, camY);

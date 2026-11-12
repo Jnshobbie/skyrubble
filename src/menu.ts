@@ -5,7 +5,7 @@ import { LEVEL } from './theme';
 export type Stats = { games: number; time: number; score: number; kills: number; deaths: number; best: number; bestDate: string; cp: number; wins: number; unlocked: number };
 const S0: Stats = { games: 0, time: 0, score: 0, kills: 0, deaths: 0, best: 0, bestDate: '-', cp: 0, wins: 0, unlocked: 1 };
 const rd = <T,>(k: string, d: T): T => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') }; } catch { return d; } };
-export const stats: Stats = rd('sky_stats', S0), settings = rd('sky_set', { shake: SHAKE_SCALE, aimAssist: true, level: 1 });
+export const stats: Stats = rd('sky_stats', S0), settings = rd('sky_set', { shake: SHAKE_SCALE, aimAssist: true, level: 1, music: 1, sfx: 1 });
 export const save = () => { try { localStorage.setItem('sky_stats', JSON.stringify(stats)); localStorage.setItem('sky_set', JSON.stringify(settings)); } catch { /* private mode */ } };
 fx.scale = settings.shake;
 const fmt = (s: number) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s % 60).padStart(2, '0'); };
@@ -93,6 +93,11 @@ export const menu = {
     const sl = document.createElement('input'); sl.type = 'range'; sl.min = '0'; sl.max = '3'; sl.step = '0.1'; sl.value = String(settings.shake);
     const show = () => (val.textContent = Math.round(settings.shake / SHAKE_SCALE * 100) + '%'); show();
     sl.oninput = () => { settings.shake = Number(sl.value); fx.scale = settings.shake; show(); save(); }; P.appendChild(sl);
+    for (const [label, key] of [['MUSIC VOLUME', 'music'], ['SOUND EFFECTS', 'sfx']] as const) {
+      const l = document.createElement('div'); l.className = 'm-set'; const v = document.createElement('b'); v.style.color = '#ffe27a'; l.append(label, v); P.appendChild(l);
+      const r = document.createElement('input'); r.type = 'range'; r.min = '0'; r.max = '1'; r.step = '0.05'; r.value = String(settings[key] ?? 1);
+      const sh = () => (v.textContent = Math.round(Number(r.value) * 100) + '%'); sh(); r.oninput = () => { settings[key] = Number(r.value); sh(); save(); }; P.appendChild(r);
+    }
     const aa = document.createElement('button'); aa.className = 'm-btn b'; const showAA = () => (aa.textContent = 'AIM ASSIST: ' + (settings.aimAssist ? 'ON' : 'OFF')); showAA();
     aa.onclick = () => { settings.aimAssist = !settings.aimAssist; showAA(); save(); }; P.appendChild(aa);
     const reset = document.createElement('button'); reset.className = 'm-btn r'; reset.textContent = 'RESET PROGRESS'; reset.onclick = () => { if (confirm('Erase checkpoint progress and all records?')) { sessionStorage.removeItem('sky_cp'); Object.assign(stats, S0); settings.level = 1; save(); location.reload(); } }; P.appendChild(reset);

@@ -1,3 +1,4 @@
+import { audio } from './audio';
 import * as THREE from 'three';
 import { Level } from './level';
 import { inp } from './input';
@@ -54,7 +55,7 @@ export class Player {
     this.aim = ay === 0 ? 0 : ay > 0 ? (moving ? Math.PI / 4 : Math.PI / 2) : (moving || this.ground ? -Math.PI / 4 : -Math.PI / 2);
     if (this.assist && (inp.fire || ay !== 0)) { const a = this.assistAim(ay); if (a !== null) this.aim = a; }   // aim assist: the direction you hold picks the target, the assist fine-tunes the angle
     if (this.spr instanceof Hero3D) this.spr.aim = this.aim;
-    if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face, this.aim); this.cd = 0.16; }
+    if (inp.fire && this.cd <= 0 && (!(this.spr instanceof Hero3D) || this.spr.aimed)) { const mz = this.spr instanceof Hero3D ? this.spr.muzzle() : null; bul.spawn(mz ? mz.x : this.x + this.face * 1.0, mz ? mz.y : this.y + 0.95, this.face, this.aim); this.cd = 0.16; audio.shoot(); }
     const run = Math.abs(this.vx) > 0.8;
     const clip = this.inv > 0.95 ? 'hurt' : !this.ground ? (inp.fire ? 'shootAir' : 'jump') : inp.fire ? (run ? 'shootRun' : 'shootStand') : run ? 'run' : 'idle';
     this.spr.play(clip); this.spr.update(dt); this.spr.set(this.x, this.y, 0.2, this.face);
