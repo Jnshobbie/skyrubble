@@ -9,6 +9,7 @@ import { Level, PAL } from './level';
 import { Player, Bullets } from './player';
 import { Soldier, Dragon, Hazards, Saw, CLUB_OPT, CLUB_ELITE, WARRIOR_OPT, WARRIOR_ELITE_OPT } from './foes';
 import { Boss3D } from './boss3d';
+import { SkeletonBoss, type BossLike } from './skeleton3d';
 import { fx } from './fx';
 import { buildMap } from './map';
 import { menu, stats, save, settings } from './menu';
@@ -46,7 +47,7 @@ const plants = NIGHT ? MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new P
 const stream = <T extends { alive: boolean }>(list: Ent<T>[], vis: (o: T, on: boolean) => void, step: (o: T) => void) => {
   for (const e of list) { const d = Math.abs(e.x - player.x); if (!e.o && d < 55) e.o = e.make(); if (e.o?.alive) { const on = d < 40; vis(e.o, on); if (on) step(e.o); } }
 };
-const boss = new Boss3D(scene, MAP.bossX, 2, MAP.arenaX);
+const boss: BossLike = NIGHT ? new SkeletonBoss(scene, MAP.bossX, 2, MAP.arenaX) : new Boss3D(scene, MAP.bossX, 2, MAP.arenaX);   // level 1: zeromus; levels 2 and 3: the skeleton with the axe
 // checkpoint flags. FLAG_SCALE: 1 = pole 3 tiles tall; 0.6 = 60% size
 const FLAG_SCALE = 0.6;
 const flags = MAP.checkpoints.map((x, i) => { const g = new THREE.Group(), pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3, 6), new THREE.MeshStandardMaterial({ color: 0x4a3a30 })),
@@ -116,7 +117,7 @@ const clock = new THREE.Clock();
   if (paused && !started) { camX += (player.x + 6 + Math.sin(performance.now() / 4000) * 3 - camX) * Math.min(1, 1.5 * dt); }   // title: slow drift
   else camX += (player.x + player.face * 2.5 - camX) * Math.min(1, 4 * dt);
   camY += (Math.max(4.5, player.y + 2.5) - camY) * Math.min(1, 3 * dt);
-  if (!over && !paused && !boss.active) { const d = Math.abs(MAP.bossX - player.x); if (d < ROAR_RANGE && (roarT -= dt) <= 0) { audio.sfx('roar', 1, MAP.bossX, ROAR_RANGE); roarT = 5 + d / ROAR_RANGE * 9; } }   // distant roars before the boss fight, more often when closer
+  if (!NIGHT && !over && !paused && !boss.active) { const d = Math.abs(MAP.bossX - player.x); if (d < ROAR_RANGE && (roarT -= dt) <= 0) { audio.sfx('roar', 1, MAP.bossX, ROAR_RANGE); roarT = 5 + d / ROAR_RANGE * 9; } }   // distant roars before the boss fight, more often when closer
   audio.update(dt, menu.isOpen, player.x, !over && !paused && player.ground && Math.abs(player.vx) > 1);
   fx.focusX = player.x; const sh = fx.update(dt);                  // particles + camera shake (offset is added after smoothing so it never feeds back)
   cam.position.set(camX + sh.x, camY + sh.y, 17); cam.lookAt(camX + sh.x, camY - 0.5 + sh.y, 0);
