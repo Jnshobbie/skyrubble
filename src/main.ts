@@ -14,6 +14,8 @@ import { fx } from './fx';
 import { buildMap } from './map';
 import { menu, stats, save, settings } from './menu';
 import { audio } from './audio';
+import { cine } from './cinematic';
+import * as scenes from './scenes';
 
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
@@ -61,14 +63,17 @@ const $ = (id: string) => document.getElementById(id)!;
 const msg = (t: string) => { $('msg').style.display = 'flex'; $('msg').innerHTML = '<div>' + t + '</div>'; };
 // ---- menu / pause flow: the game starts on the title menu (world frozen behind it); `sky_auto` = skip the title after Retry / Restart
 let paused = true, started = false, saveT = 0, overT = 0;
-const play = () => { menu.close(); paused = false; if (!started) { started = true; stats.games++; save(); } };
+const cinOn = () => settings.cinematics !== false && !qs.has('nocine');          // Settings toggle / ?nocine in the address
+const gamePose = () => ({ x: camX, y: camY, z: 17, lx: camX, ly: camY - 0.5 });
+let defeatCine = false;
+const play = () => { menu.close(); paused = false; if (!started) { started = true; stats.games++; save(); if (cinOn() && cpIdx === 0 && !cine.seen('intro' + LEVEL)) { cine.mark('intro' + LEVEL); cine.play(scenes.intro(LEVEL, player), { start: gamePose(), hp: player.hp, fade: true }); } } };
 const reloadAuto = () => { sessionStorage.setItem('sky_auto', '1'); save(); location.reload(); };
 menu.on.play = play; menu.on.resume = () => { menu.close(); paused = false; };
-menu.on.restart = reloadAuto; menu.on.newGame = () => { sessionStorage.removeItem('sky_cp'); reloadAuto(); };
+menu.on.restart = reloadAuto; menu.on.newGame = () => { sessionStorage.removeItem('sky_cp'); cine.forget(); reloadAuto(); };
 // pick a level (Settings) or move on after a win: remember it, start it fresh (auto = skip the title screen)
 menu.on.level = (n, auto) => {
   if (!auto && started && !over && !confirm('Switch level? Your current run restarts.')) return;
-  settings.level = n; sessionStorage.removeItem('sky_cp'); history.replaceState(null, '', location.pathname);
+  settings.level = n; sessionStorage.removeItem('sky_cp'); cine.forget(); history.replaceState(null, '', location.pathname);
   if (auto) reloadAuto(); else { sessionStorage.removeItem('sky_auto'); save(); location.reload(); }
 };
 menu.on.quit = () => { if (!started && !over) { window.close(); say('You can close this tab'); } else { sessionStorage.removeItem('sky_auto'); save(); location.reload(); } };
@@ -82,10 +87,10 @@ audio.ambient(LEVEL);
 const clock = new THREE.Clock();
 (function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(clock.getDelta(), 1 / 30);
+  const raw = Math.min(clock.getDelta(), 1 / 30); if (!paused) cine.tick(raw); const dt = raw * cine.scale;          // dt = slow-mo aware; raw = real time
   if (!over && !paused) {
     stats.time += dt; if ((saveT += dt) > 5) { saveT = 0; save(); }
-    poll(); player.assist = settings.aimAssist;
+    poll(); if (cine.on) Object.assign(inp, { x: 0, jump: false, jumpDown: false, fire: false, up: false, down: false }); player.assist = settings.aimAssist;
     if (player.assist && (inp.fire || inp.up || inp.down)) {                                                      // targets for aim assist: living enemies + the boss
       const t: { x: number; y: number }[] = [];
       for (const e of foes) if (e.o?.alive && e.o.st !== 'dying') t.push({ x: e.o.x, y: e.o.y + 1 });
@@ -103,14 +108,18 @@ const clock = new THREE.Clock();
       fx.burst(f.x + 0.6, 4.5, new THREE.Color(0.5, 3, 0.8), 30, 6, 3, 8, 0.9); say(`CHECKPOINT ${cpIdx} / ${flags.length}`); }
     toastT -= dt; if (toastT < 0) toast.style.opacity = '0';
     if (player.ground && lvl.solid(Math.floor(player.x - 0.8), Math.floor(player.y - 0.5)) && lvl.solid(Math.floor(player.x + 0.8), Math.floor(player.y - 0.5)) && player.inv <= 0) safe = { x: player.x, y: player.y + 0.3 };   // last firm footing
-    if (!boss.active && player.x > MAP.arenaX + 8) { boss.active = true; boss.next(player); $('boss').style.display = 'block'; cpIdx = flags.length + 1; respawn = { x: MAP.arenaX + 10, y: 3 }; sessionStorage.setItem('sky_cp', String(cpIdx)); }
-    score += boss.update(dt, player, bul, lvl, hz); hz.update(dt, player, lvl); lvl.update(dt);
+    if (!boss.active && player.x > MAP.arenaX + 8) { boss.active = true; boss.next(player); $('boss').style.display = 'block'; cpIdx = flags.length + 1; respawn = { x: MAP.arenaX + 10, y: 3 }; sessionStorage.setItem('sky_cp', String(cpIdx));
+      if (cinOn() && !cine.seen('boss' + LEVEL)) { cine.mark('boss' + LEVEL); cine.play(scenes.bossReveal(LEVEL, player, () => boss.aimPoint()), { start: gamePose(), hp: player.hp }); } }
+    score += boss.update(dt, player, bul, lvl, hz);
+    if (boss.st === 'defeat' && !defeatCine) { defeatCine = true; if (cinOn()) cine.play(scenes.bossDefeat(LEVEL, () => boss.aimPoint()), { start: gamePose(), hp: player.hp }); } hz.update(dt, player, lvl); lvl.update(dt);
+    if (cine.on) player.hp = Math.max(player.hp, cine.lockHp);                                                                     // hero can't die during a scene
     if (player.y < -8) { player.hp--; player.x = safe.x - Math.sign(player.vx || 1) * 1.2; player.y = safe.y; player.vy = 0; player.inv = 1.2; }     // fell: back to the last firm ground (not the start)
     if (player.hp <= 0) { over = true; stats.deaths++; stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.3; }
     if (boss.dead) { over = true; stats.wins++; if (LEVEL === 1) stats.unlocked = Math.max(stats.unlocked, 2); stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.8; sessionStorage.removeItem('sky_cp'); }
   }
   if (over && player.hp <= 0) player.animOnly(dt, lvl);
   if (over && overT > 0 && (overT -= dt) <= 0) menu.open(player.hp <= 0 ? 'over' : 'win', { score, level: LEVEL });
+  if (menu.isOpen) cine.stop();
   ($('hp').firstChild as HTMLElement).style.width = Math.max(0, player.hp / 5 * 100) + '%';
   ($('boss').firstChild as HTMLElement).style.width = (boss.shieldHp > 0 ? boss.shieldHp / 14 * 50 + 50 : boss.hp / 30 * 50) + '%';
   $('score').textContent = String(score);
@@ -120,7 +129,9 @@ const clock = new THREE.Clock();
   if (!NIGHT && !over && !paused && !boss.active) { const d = Math.abs(MAP.bossX - player.x); if (d < ROAR_RANGE && (roarT -= dt) <= 0) { audio.sfx('roar', 1, MAP.bossX, ROAR_RANGE); roarT = 5 + d / ROAR_RANGE * 9; } }   // distant roars before the boss fight, more often when closer
   audio.update(dt, menu.isOpen, player.x, !over && !paused && player.ground && Math.abs(player.vx) > 1);
   fx.focusX = player.x; const sh = fx.update(dt);                  // particles + camera shake (offset is added after smoothing so it never feeds back)
-  cam.position.set(camX + sh.x, camY + sh.y, 17); cam.lookAt(camX + sh.x, camY - 0.5 + sh.y, 0);
+  const v = cine.view(gamePose());
+  if (v) { cam.position.set(v.x + sh.x, v.y + sh.y, v.z); cam.lookAt(v.lx + sh.x, v.ly + sh.y, 0); }
+  else { cam.position.set(camX + sh.x, camY + sh.y, 17); cam.lookAt(camX + sh.x, camY - 0.5 + sh.y, 0); }
   amb?.update(dt, player.x, player.y, camX, camY);
   sun.position.set(player.x + 12, 24, 14); sun.target.position.set(player.x, 4, 0);
   comp.render(dt);

@@ -5,7 +5,7 @@ import { LEVEL } from './theme';
 export type Stats = { games: number; time: number; score: number; kills: number; deaths: number; best: number; bestDate: string; cp: number; wins: number; unlocked: number };
 const S0: Stats = { games: 0, time: 0, score: 0, kills: 0, deaths: 0, best: 0, bestDate: '-', cp: 0, wins: 0, unlocked: 1 };
 const rd = <T,>(k: string, d: T): T => { try { return { ...d, ...JSON.parse(localStorage.getItem(k) || '{}') }; } catch { return d; } };
-export const stats: Stats = rd('sky_stats', S0), settings = rd('sky_set', { shake: SHAKE_SCALE, aimAssist: true, level: 1, music: 1, sfx: 1 });
+export const stats: Stats = rd('sky_stats', S0), settings = rd('sky_set', { shake: SHAKE_SCALE, aimAssist: true, cinematics: true, level: 1, music: 1, sfx: 1 });
 export const save = () => { try { localStorage.setItem('sky_stats', JSON.stringify(stats)); localStorage.setItem('sky_set', JSON.stringify(settings)); } catch { /* private mode */ } };
 fx.scale = settings.shake;
 const fmt = (s: number) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s % 60).padStart(2, '0'); };
@@ -100,6 +100,8 @@ export const menu = {
     }
     const aa = document.createElement('button'); aa.className = 'm-btn b'; const showAA = () => (aa.textContent = 'AIM ASSIST: ' + (settings.aimAssist ? 'ON' : 'OFF')); showAA();
     aa.onclick = () => { settings.aimAssist = !settings.aimAssist; showAA(); save(); }; P.appendChild(aa);
+    const cn = document.createElement('button'); cn.className = 'm-btn b'; const showCN = () => (cn.textContent = 'CINEMATICS: ' + (settings.cinematics !== false ? 'ON' : 'OFF')); showCN();
+    cn.onclick = () => { settings.cinematics = settings.cinematics === false; showCN(); save(); }; P.appendChild(cn);
     const reset = document.createElement('button'); reset.className = 'm-btn r'; reset.textContent = 'RESET PROGRESS'; reset.onclick = () => { if (confirm('Erase checkpoint progress and all records?')) { sessionStorage.removeItem('sky_cp'); Object.assign(stats, S0); settings.level = 1; save(); location.reload(); } }; P.appendChild(reset);
     const b = document.createElement('button'); b.className = 'm-btn g'; b.textContent = 'BACK'; b.onclick = back; P.appendChild(b); root.replaceChildren(P); b.focus();
   },
