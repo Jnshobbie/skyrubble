@@ -1,13 +1,27 @@
 import type { Pose, Shot } from './cinematic';
 // All cinematic scenes. Edit the story lines in TEXT; edit the camera moves below (each shot = duration + where the camera ends up).
 // Shot fields: dur (s) | to / from {x,y,z,lx,ly} (z = distance, lx/ly = look-at point) | ease | text + who (caption) | slow (world speed, 1 = normal) | shake.
-export const TEXT: Record<'intro' | 'boss' | 'win', Record<number, any>> = {
+const HER = 'MIRA';                      // the lost sister (change the name here, and the lines below say "sister" - swap for "friend" if you prefer)
+export const TEXT: Record<'intro' | 'boss' | 'win' | 'ending', Record<number, any>> = {
   intro: {
-    1: ['The floating lands of Skyrubble are falling apart...', 'One soldier is left to reach the guardian at the end.'],
-    2: ['Night falls over the hollow forest...', 'Something ancient is waiting in the dark.'],
+    1: ['The night the sky broke, the monsters of Skyrubble took my sister.', 'All she left me was her pistol. I will bring her home.'],
+    2: ['The Hollow Forest never sleeps. Every light here is a lantern for something hungry.', 'Her scarf, caught on a branch. She came this way. She is alive.'],
+    3: ['The Monster Throne. No one has ever come back from here.', `Hold on, ${HER}. I am coming.`],
   },
-  boss: { 1: { who: 'ZEROMUS', line: 'Guardian of the first sky' }, 2: { who: 'SKELETON ELITE', line: 'Keeper of the hollow night' } },
-  win: { 1: 'The guardian falls. The way to the night forest is open.', 2: 'The hollow forest is quiet again.' },
+  boss: { 1: { who: 'ZEROMUS', line: 'Warden of the Broken Sky' }, 2: { who: 'SKELETON ELITE', line: 'Keeper of the Hollow Night' }, 3: { who: 'THE HOLLOW KING', line: 'Ruler of the monster lands' } },
+  win: {
+    1: 'The Warden falls. Past the clouds, a forest glows in the dark. Her trail leads there.',
+    2: 'The Keeper crumbles. Beyond the trees, the monsters\' throne waits.',
+    3: 'The throne is silent. Somewhere behind it, someone is calling my name.',
+  },
+  // finale after level 3: each line = [speaker, text]
+  ending: [
+    ['VANN', `${HER}...?`],
+    [HER, 'You took your time.'],
+    ['VANN', 'I had a few monsters in the way.'],
+    [HER, 'Then let me help with the rest. Give me a sword.'],
+    ['', `${HER} joins the fight. NEW CHARACTER UNLOCKED`],
+  ],
 };
 type P = { x: number; y: number };
 type Aim = () => { x: number; y: number };
@@ -17,8 +31,8 @@ const follow = (aim: Aim, dx: number, dy: number, z: number) => (): Partial<Pose
 export const intro = (level: number, p: P): Shot[] => {
   const t: string[] = TEXT.intro[level] ?? [];
   return [
-    { dur: 3.8, from: { x: p.x + 34, y: 13, z: 38, lx: p.x + 26, ly: 7 }, to: { x: p.x + 12, y: 8, z: 25, lx: p.x + 8, ly: 5 }, ease: 'out', text: t[0] },
-    { dur: 2.8, to: { x: p.x + 1.8, y: p.y + 1.6, z: 9, lx: p.x + 1.8, ly: p.y + 1.2 }, text: t[1] },
+    { dur: 3.8, from: { x: p.x + 34, y: 13, z: 38, lx: p.x + 26, ly: 7 }, to: { x: p.x + 12, y: 8, z: 25, lx: p.x + 8, ly: 5 }, ease: 'out', who: 'VANN', text: t[0] },
+    { dur: 2.8, to: { x: p.x + 1.8, y: p.y + 1.6, z: 9, lx: p.x + 1.8, ly: p.y + 1.2 }, who: 'VANN', text: t[1] },
     { dur: 1.3, to: { x: p.x + 2.5, y: 5, z: 17 } },
   ];
 };
@@ -36,3 +50,5 @@ export const bossDefeat = (level: number, aim: Aim): Shot[] => [
   { dur: 1.5, slow: 0.3, to: follow(aim, 0, 0.5, 12), ease: 'out', shake: 0.5 },
   { dur: 2.4, slow: 1, to: follow(aim, 0, 1.5, 20), text: TEXT.win[level] },
 ];
+/** Finale after the last boss (needs the level 3 hook in main.ts + the girl model): slow push-in on the rescue, one caption per line of TEXT.ending. */
+export const ending = (p: P): Shot[] => (TEXT.ending as string[][]).map(([who, text], i) => ({ dur: 3.2, to: { x: p.x + 1.2 - i * 0.2, y: p.y + 1.6, z: 11 - i * 0.6, lx: p.x + 1.2, ly: p.y + 1.2 }, who, text }));
