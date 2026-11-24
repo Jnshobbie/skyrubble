@@ -2,13 +2,14 @@ import type { Pose, Shot } from './cinematic';
 // All cinematic scenes. Edit the story lines in TEXT; edit the camera moves below (each shot = duration + where the camera ends up).
 // Shot fields: dur (s) | to / from {x,y,z,lx,ly} (z = distance, lx/ly = look-at point) | ease | text + who (caption) | slow (world speed, 1 = normal) | shake.
 const HER = 'MIRA';                      // the lost sister (change the name here, and the lines below say "sister" - swap for "friend" if you prefer)
-export const TEXT: Record<'intro' | 'boss' | 'win' | 'ending', Record<number, any>> = {
+export const TEXT: Record<'intro' | 'boss' | 'mini' | 'win' | 'ending', Record<number, any>> = {
   intro: {
     1: ['The night the sky broke, the monsters of Skyrubble took my sister.', 'All she left me was her pistol. I will bring her home.'],
     2: ['The Hollow Forest never sleeps. Every light here is a lantern for something hungry.', 'Her scarf, caught on a branch. She came this way. She is alive.'],
     3: ['The Monster Throne. No one has ever come back from here.', `Hold on, ${HER}. I am coming.`],
   },
-  boss: { 1: { who: 'ZEROMUS', line: 'Warden of the Broken Sky' }, 2: { who: 'SKELETON ELITE', line: 'Keeper of the Hollow Night' }, 3: { who: 'THE HOLLOW KING', line: 'Ruler of the monster lands' } },
+  boss: { 1: { who: 'ZEROMUS', line: 'Warden of the Broken Sky' }, 2: { who: 'SKELETON ELITE', line: 'Keeper of the Hollow Night' }, 3: { who: 'ZEROMUS', line: 'The Warden has come back for you' } },
+  mini: { 3: { who: 'SKELETON ELITE', line: 'He guards the road to the throne' } },       // level 3: the skeleton mini-boss before the last checkpoint
   win: {
     1: 'The Warden falls. Past the clouds, a forest glows in the dark. Her trail leads there.',
     2: 'The Keeper crumbles. Beyond the trees, the monsters\' throne waits.',
@@ -37,8 +38,8 @@ export const intro = (level: number, p: P): Shot[] => {
   ];
 };
 /** Entering the boss arena: fly over to the boss, name card + roar shake, back to the hero. */
-export const bossReveal = (level: number, p: P, aim: Aim): Shot[] => {
-  const b = TEXT.boss[level] ?? { who: 'BOSS', line: '' };
+export const bossReveal = (level: number, p: P, aim: Aim, mini = false): Shot[] => {
+  const b = TEXT[mini ? 'mini' : 'boss'][level] ?? { who: 'BOSS', line: '' };
   return [
     { dur: 2.2, to: follow(aim, -6, 1.5, 24) },
     { dur: 2.8, to: follow(aim, -3, 1, 15), ease: 'out', shake: 0.5, who: b.who, text: b.line },
@@ -46,9 +47,9 @@ export const bossReveal = (level: number, p: P, aim: Aim): Shot[] => {
   ];
 };
 /** Boss starts to fall apart: slow-mo push-in, then pull back and show the victory line. */
-export const bossDefeat = (level: number, aim: Aim): Shot[] => [
+export const bossDefeat = (level: number, aim: Aim, mini = false): Shot[] => [
   { dur: 1.5, slow: 0.3, to: follow(aim, 0, 0.5, 12), ease: 'out', shake: 0.5 },
-  { dur: 2.4, slow: 1, to: follow(aim, 0, 1.5, 20), text: TEXT.win[level] },
+  { dur: 2.4, slow: 1, to: follow(aim, 0, 1.5, 20), text: mini ? 'The guardian falls. The gate to the throne grinds open.' : TEXT.win[level] },
 ];
 /** Finale after the last boss (needs the level 3 hook in main.ts + the girl model): slow push-in on the rescue, one caption per line of TEXT.ending. */
 export const ending = (p: P): Shot[] => (TEXT.ending as string[][]).map(([who, text], i) => ({ dur: 3.2, to: { x: p.x + 1.2 - i * 0.2, y: p.y + 1.6, z: 11 - i * 0.6, lx: p.x + 1.2, ly: p.y + 1.2 }, who, text }));

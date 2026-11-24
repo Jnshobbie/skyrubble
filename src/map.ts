@@ -2,17 +2,18 @@
 // Zone shapes differ: 0 meadow, 1 stairs, 2 towers & pits, 3 floating islands. Dragon type = zone - 1 (green, purple, orange).
 // Passability by construction: gaps <= 4 tiles, single step-ups <= 3 tiles (player: jump ~3.9 tiles, double jump more).
 export type MapData = { rects: number[][]; foes: { x: number; y: number; r: number; elite: boolean }[]; dragons: { x: number; y: number; v: number }[];
-  saws: { x: number; y: number; rx: number }[]; checkpoints: number[]; bossX: number; arenaX: number; len: number; zones: number[] };
+  saws: { x: number; y: number; rx: number }[]; checkpoints: number[]; bossX: number; arenaX: number; len: number; zones: number[];
+  mini?: { arenaX: number; bossX: number; gate: number[] }; maxY: number };   // level 3: skeleton mini-boss arena (+ the locked exit gate [x,y,w,h]); maxY = top of the highest ground tier
 let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, ri = (a: number, b: number) => a + Math.floor(rnd() * (b - a + 1));
-export function buildMap(L2 = false): MapData {   // L2 = level 2: 5 zones / 5 checkpoints, longer, denser, with enemy gauntlets behind breakable gates
-  seed = L2 ? 23 : 11;
+export function buildMap(level: 1 | 2 | 3 = 1): MapData {   // level 2: 6 zones / 5 checkpoints, longer, denser, with enemy gauntlets behind breakable gates. Level 3: same + 4 ground tiers + a mini-boss arena
+  const L2 = level >= 2, L3 = level === 3; seed = L3 ? 37 : L2 ? 23 : 11;
   const rects: number[][] = [], foes: MapData['foes'] = [], dragons: MapData['dragons'] = [], saws: MapData['saws'] = [], checkpoints: number[] = [];
   const tops: { x: number; w: number; y: number; zone: number; floating: boolean }[] = [];
   let zone = 0;
   const ground = (x: number, w: number) => { rects.push([x, 0, w, 2]); tops.push({ x, w, y: 2, zone, floating: false }); };
   const plat = (x: number, y: number, w: number) => { rects.push([x, y, w, 1]); tops.push({ x, w, y: y + 1, zone, floating: true }); };
   const block = (x: number, w: number, h: number) => { rects.push([x, 2, w, h]); tops.push({ x, w, y: 2 + h, zone, floating: true }); };
-  const ZONE_LEN = L2 ? 100 : 90, INTRO = 50, NZ = L2 ? 6 : 4, D = L2 ? 1.35 : 1;   // zones, and enemy / hazard density
+  const ZONE_LEN = L3 ? 112 : L2 ? 100 : 90, INTRO = 50, NZ = L2 ? 6 : 4, D = L3 ? 1.5 : L2 ? 1.35 : 1;   // zones, and enemy / hazard density
 
   // ---------- intro: 0..50, nothing hostile. Room to run, jump, double-jump ----------
   ground(0, 22); plat(8, 5, 4); plat(14, 7, 3);
@@ -44,16 +45,17 @@ export function buildMap(L2 = false): MapData {   // L2 = level 2: 5 zones / 5 c
     [tower, islands, stairsUp, stairsDown, () => gap(4, true), tower, islands, () => flat(9)],      // zones 5 and 6 (level 2 only): everything mixed
     [stairsUp, tower, stairsDown, islands, () => gap(4, true), tower, stairsUp, stairsDown, () => flat(9)],
   ];
-  const cps: number[] = [], runs: number[] = [];
+  const cps: number[] = [], runs: number[] = [], starts: number[] = []; let mini: MapData['mini'];
   for (let z = 0; z < NZ; z++) {
-    zone = z; if (z === 0) { /* intro already placed to x=50 */ }
-    const end = INTRO + (z + 1) * ZONE_LEN - 12;
+    zone = z; starts.push(x);
+    const end = x + ZONE_LEN - 12;                              // (x = this zone's start; same numbers as before for levels 1-2)
     let k = 0; while (x < end - (L2 ? 58 : 14)) { SEQ[z][k++ % SEQ[z].length](); }
     if (L2 && x + 12 < end) { ground(x, 12); x += 12; }       // flat pad: room for this zone's ramp to the upper lane
     if (L2 && x + 32 < end) gauntlet(z);                       // level 2: a walled-in arena full of enemies; shoot through the gate to get in, and the exit
     runs.push(x);                                              // lower lane run-up starts here (the upper lane ends here and drops onto it)
     if (x < end) { ground(x, end - x); x = end; }              // flat run-up so the checkpoint is always on level ground
     ground(x, 12); if (z < NZ - 1) cps.push(x + 5); x += 12;          // checkpoints 1-3; the last zone runs straight into the boss arena
+    if (L3 && z === 3) { const ax = x; ground(ax, 50); x += 50; mini = { arenaX: ax, bossX: ax + 40, gate: [ax + 48, 2, 2, 8] }; rects.push(mini.gate); }   // level 3: the checkpoint before the last (4) is followed by the skeleton's arena; its exit gate stays locked until it falls
   }
   checkpoints.push(...cps);
   // ---------- boss arena ----------
@@ -64,12 +66,12 @@ export function buildMap(L2 = false): MapData {   // L2 = level 2: 5 zones / 5 c
   // LOWER lane = everything above (ground top y=2). UPPER lane = 1-thick stone slabs at tile y=10 (top 11), 8 tiles over the lower ground, so the lower lane
   // is a corridor under a ceiling. Connections: a 2-step ramp per zone (lower -> upper), holes in the slabs (drop to lower), and bullets: any block can be shot
   // away, so shooting DOWN through a slab opens a window onto the enemies below. Sealed walls in the lower corridor must be shot through (2 rows: aim straight + aim up).
-  const SLAB = 10, UP = SLAB + 1;
+  const SLAB = 10, UP = SLAB + 1; type Slab = { x: number; w: number; wall: number; holeL?: boolean; holeR?: boolean }; const slabsB: Slab[][] = [];
   const low = rects.slice(), lowerGround = (x: number) => low.some(([rx, ry, rw]) => ry === 0 && x >= rx && x < rx + rw);
   const lowerClear = (x: number) => lowerGround(x) && !gaunt.some(([s, e]) => x >= s - 1 && x < e + 1) && !low.some(([rx, ry, rw]) => ry === 2 && x >= rx && x < rx + rw);   // floor with no block/pillar standing on it (floating platforms don't count)
   const blockedAt = (x: number) => rects.some(([rx, ry, rw, rh]) => x >= rx - 1 && x < rx + rw + 1 && ry <= 3 && ry + rh > 2 && ry >= 2);   // something stands on the lower ground here
   for (let z = 0; z < NZ; z++) {
-    const a = z === 0 ? 66 : cps[z - 1] + 14, b = runs[z]; let rx = -1;
+    const a = z === 0 ? 66 : starts[z] + 7, b = runs[z]; let rx = -1;      // (starts[z] + 7 == cps[z - 1] + 14 on levels 1-2)
     for (let X = a; X + 9 <= b && rx < 0; X++) if (Array.from({ length: 9 }, (_, i) => lowerClear(X + i)).every(Boolean)) rx = X;
     if (rx < 0) continue;
     for (let i = rects.length - 1; i >= 0; i--) { const [qx, qy, qw] = rects[i]; if (qy >= 3 && qy <= 9 && qx < rx + 9 && qx + qw > rx + 1) rects.splice(i, 1); }   // clear floating platforms out of the ramp's way
@@ -84,9 +86,10 @@ export function buildMap(L2 = false): MapData {   // L2 = level 2: 5 zones / 5 c
       if (X + w + h + 8 < b && Array.from({ length: h + 2 }, (_, i) => lowerClear(X + w - 1 + i)).every(Boolean)) hole = h;
       pieces.push({ x: X, w, holeL, holeR: hole > 0 }); X += w + hole; holeL = hole > 0;
     }
-    for (const pc of pieces) {
+    slabsB[z] = pieces.map(p => ({ x: p.x, w: p.w, wall: -99, holeL: p.holeL, holeR: p.holeR }));
+    for (const [pi, pc] of pieces.entries()) {
       rects.push([pc.x, SLAB, pc.w, 1]);
-      const wx = pc.w >= 10 && rnd() < 0.45 ? pc.x + pc.w - 3 : -99; if (wx > 0) rects.push([wx, UP, 1, 4]);       // 4-high wall on the slab: shoot it away (or double-jump it)
+      const wx = pc.w >= 10 && rnd() < 0.45 ? pc.x + pc.w - 3 : -99; slabsB[z][pi].wall = wx; if (wx > 0) rects.push([wx, UP, 1, 4]);       // 4-high wall on the slab: shoot it away (or double-jump it)
       const n = pc.w >= 12 ? 2 : 1; if (pc.w >= 8) for (let i = 0; i < n; i++) { const fx = pc.x + pc.w * (i + 1) / (n + 1); if (Math.abs(fx - (wx + 0.5)) < 1.8) continue;
         foes.push({ x: fx, y: UP, r: Math.max(1, Math.min(2.5, pc.w / (2 * (n + 1)) - 0.6)), elite: z >= 2 && rnd() < 0.4 }); }
       if (pc.holeL && rnd() < 0.6) saws.push({ x: pc.x + 0.7, y: UP + 0.45, rx: 0 });             // saws sit on the slab EDGE next to a hole
@@ -94,10 +97,45 @@ export function buildMap(L2 = false): MapData {   // L2 = level 2: 5 zones / 5 c
     }
   }
 
+  // ---------- level 3: ground tiers 3 and 4 (slabs at y=19 and y=28; tier 2 is the y=10 slab lane) ----------
+  // Same recipe as the first slab lane, stacked on top of it: a 2-step ramp on a clear stretch of the slab below (+3 +3 +3, all single jumps), a new slab lane 8 tiles
+  // higher with holes (drop back down), 4-high wall columns (shoot or double-jump them), enemies, and saws on the edges next to holes.
+  const climb = (base: Slab[], baseTop: number): Slab[] => {
+    if (!base.length) return [];
+    const S = baseTop + 8, T = S + 1, lastEnd = Math.max(...base.map(p => p.x + p.w)) - 2, walls = base.map(p => p.wall).filter(w => w > 0);
+    const cands = base.filter(p => p.w >= 9 && !walls.some(w => w >= p.x - 1 && w <= p.x + 9)).map(p => p.x); if (!cands.length) return [];
+    const rx = cands[0];                                           // earliest clear stretch, so the new tier covers as much of the zone as possible
+    for (let i = foes.length - 1; i >= 0; i--) if (foes[i].y === baseTop && foes[i].x > rx - 1 && foes[i].x < rx + 10) foes.splice(i, 1);
+    for (let i = saws.length - 1; i >= 0; i--) if (Math.abs(saws[i].y - (baseTop + 0.45)) < 0.01 && saws[i].x > rx - 1 && saws[i].x < rx + 10) saws.splice(i, 1);
+    rects.push([rx + 2, baseTop, 3, 3], [rx + 5, baseTop, 3, 6]);
+    const baseClear = (t: number) => base.some(p => t >= p.x && t < p.x + p.w) && !walls.some(w => Math.abs(t - w) <= 1) && !(t >= rx - 1 && t < rx + 9);
+    const out: Slab[] = []; let X = rx + 8, holeL = false;
+    while (X < lastEnd - 6) {
+      const w = Math.min(ri(8, 13), lastEnd - X); let hole = 0; const h = ri(3, 4);
+      if (X + w + h + 8 < lastEnd && Array.from({ length: h + 2 }, (_, i) => baseClear(X + w - 1 + i)).every(Boolean)) hole = h;
+      out.push({ x: X, w, wall: -99, holeL, holeR: hole > 0 }); X += w + hole; holeL = hole > 0;
+    }
+    for (const pc of out) {
+      rects.push([pc.x, S, pc.w, 1]);
+      const wx = pc.w >= 10 && rnd() < 0.4 ? pc.x + pc.w - 3 : -99; pc.wall = wx; if (wx > 0) rects.push([wx, T, 1, 4]);
+      const n = pc.w >= 12 ? 2 : 1; if (pc.w >= 8) for (let i = 0; i < n; i++) { const fx = pc.x + pc.w * (i + 1) / (n + 1); if (Math.abs(fx - (wx + 0.5)) < 1.8) continue;
+        foes.push({ x: fx, y: T, r: Math.max(1, Math.min(2.5, pc.w / (2 * (n + 1)) - 0.6)), elite: rnd() < 0.5 }); }
+      if (pc.holeL && rnd() < 0.6) saws.push({ x: pc.x + 0.7, y: T + 0.45, rx: 0 });
+      if (pc.holeR && rnd() < 0.6) saws.push({ x: pc.x + pc.w - 0.7, y: T + 0.45, rx: 0 });
+    }
+    return out;
+  };
+  let maxY = L2 ? UP : 4; const tierHas: boolean[][] = [];
+  if (L3) for (let z = 1; z < NZ; z++) {
+    const cc = climb(slabsB[z] ?? [], UP), dd = z >= 2 ? climb(cc, UP + 9) : []; tierHas[z] = [cc.length > 0, dd.length > 0];
+    if (cc.length) maxY = Math.max(maxY, UP + 9); if (dd.length) maxY = UP + 18;
+  }
+
   // ---------- population ----------
   for (const t of tops) {
     if (t.x < INTRO + 4) continue;                              // intro + first run: nothing hostile
     if (t.x > arenaX - 14 && t.x < arenaX + 2) continue;
+    if (mini && t.x > mini.arenaX - 6 && t.x < mini.arenaX + 56) continue;     // level 3: nothing hostile in the mini-boss arena
     if (cps.some(c => t.x <= c + 6 && t.x + t.w >= c - 6)) continue;     // never on a checkpoint
     const w = t.w, z = t.zone; if (z === NZ) continue;
     if (!t.floating && w >= 7 && (z >= 1 || t.x > 70)) { const n = w >= 11 ? 2 : 1; for (let i = 0; i < n; i++) if (!blockedAt(t.x + w * (i + 1) / (n + 1))) foes.push({ x: t.x + w * (i + 1) / (n + 1), y: t.y, r: Math.max(1, Math.min(3, w / (2 * (n + 1)) - 0.6)), elite: z >= 2 && rnd() < 0.4 }); }
@@ -108,7 +146,7 @@ export function buildMap(L2 = false): MapData {   // L2 = level 2: 5 zones / 5 c
   }
   // dragons appear only AFTER the checkpoint that opens their zone: zone 1 green, zone 2 purple, zone 3 orange
   const DRAGON_H = 2;   // hover height above the upper lane's floor (tiles): lower = easier to shoot, higher = harder
-  for (let z = 1; z <= NZ - 1; z++) { const start = cps[z - 1] + 12, end = z < NZ - 1 ? cps[z] - 14 : arenaX - 14, n = z === NZ - 1 ? 4 : 3, step = (end - start) / n;
-    for (let i = 0; i < n; i++) dragons.push({ x: start + step * (i + 0.5), y: UP + DRAGON_H + ri(0, 2) * 0.5, v: Math.min(2, z - 1) }); }   // dragons hover above the upper lane
-  return { rects, foes, dragons, saws, checkpoints, bossX, arenaX, len: x, zones: [0, ...cps] };
+  for (let z = 1; z <= NZ - 1; z++) { const start = starts[z] + 5, end = z < NZ - 1 ? cps[z] - 14 : arenaX - 14, n = z === NZ - 1 ? 4 : 3, step = (end - start) / n;
+    for (let i = 0; i < n; i++) dragons.push({ x: start + step * (i + 0.5), y: (L3 ? [UP, UP + 9, UP + 18][(i + z) % (tierHas[z]?.[1] ? 3 : tierHas[z]?.[0] ? 2 : 1)] : UP) + DRAGON_H + ri(0, 2) * 0.5, v: Math.min(2, z - 1) }); }   // dragons hover above the upper lane
+  return { rects, foes, dragons, saws, checkpoints, bossX, arenaX, len: x, zones: [0, ...cps], mini, maxY };
 }

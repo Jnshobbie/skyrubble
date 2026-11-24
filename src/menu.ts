@@ -40,23 +40,23 @@ type Kind = 'title' | 'pause' | 'over' | 'win';
 export const menu = {
   isOpen: false,
   on: { play: () => {}, resume: () => {}, restart: () => {}, newGame: () => {}, quit: () => {}, pause: () => {}, level: (_n: number, _auto?: boolean) => {} },
-  open(kind: Kind, info: { score?: number; cp?: number; level?: number } = {}) { this.isOpen = true; document.body.classList.add('menu'); root.style.display = 'flex'; this.screen(kind, info); },
+  open(kind: Kind, info: { score?: number; cp?: number; level?: number; cps?: number } = {}) { this.isOpen = true; document.body.classList.add('menu'); root.style.display = 'flex'; this.screen(kind, info); },
   close() { this.isOpen = false; document.body.classList.remove('menu'); root.style.display = 'none'; },
-  screen(kind: Kind, info: { score?: number; cp?: number; level?: number } = {}) {
+  screen(kind: Kind, info: { score?: number; cp?: number; level?: number; cps?: number } = {}) {
     const P = document.createElement('div'); P.className = 'm-panel';
     const title = (t: string, sub = '') => { const d = document.createElement('div'); d.className = 'm-title'; d.textContent = t; P.appendChild(d); if (sub) { const s = document.createElement('div'); s.className = 'm-sub'; s.textContent = sub; P.appendChild(s); } };
     const btn = (label: string, cls: string, fn: () => void) => { const b = document.createElement('button'); b.className = 'm-btn ' + cls; b.textContent = label; b.onclick = fn; P.appendChild(b); return b; };
     const back = () => this.screen(kind, info);
     if (kind === 'title') {
       title('SKYRUBBLE', 'LEVEL ' + (info.level ?? 1)); const cp = info.cp ?? 0;
-      btn(cp > 3 ? 'CONTINUE (BOSS FIGHT)' : cp > 0 ? `CONTINUE (CHECKPOINT ${cp})` : 'PLAY', 'g', () => this.on.play());
+      btn(cp > (info.cps ?? 3) ? 'CONTINUE (BOSS FIGHT)' : cp > 0 ? `CONTINUE (CHECKPOINT ${cp})` : 'PLAY', 'g', () => this.on.play());
       if (cp > 0) btn('NEW GAME', 'y', () => this.on.newGame());
       btn('SELECT', 'b', () => this.select(back));
     } else if (kind === 'pause') { title('PAUSED'); btn('RESUME', 'g', () => this.on.resume()); btn('RESTART', 'y', () => this.on.restart()); }
     else if (kind === 'over') { title('GAME OVER', 'SCORE ' + (info.score ?? 0)); btn('RETRY', 'g', () => this.on.restart()); }
     else {
       const lv = info.level ?? 1; title(`LEVEL ${lv} CLEARED!`, 'SCORE ' + (info.score ?? 0));
-      if (lv < 2) { const u = document.createElement('div'); u.className = 'm-sub'; u.textContent = `LEVEL ${lv + 1} UNLOCKED`; P.appendChild(u); btn(`CONTINUE TO LEVEL ${lv + 1}`, 'g', () => this.on.level(lv + 1, true)); btn(`RESTART LEVEL ${lv}`, 'y', () => this.on.level(lv, true)); }
+      if (lv < 3) { const u = document.createElement('div'); u.className = 'm-sub'; u.textContent = `LEVEL ${lv + 1} UNLOCKED`; P.appendChild(u); btn(`CONTINUE TO LEVEL ${lv + 1}`, 'g', () => this.on.level(lv + 1, true)); btn(`RESTART LEVEL ${lv}`, 'y', () => this.on.level(lv, true)); }
       else btn('PLAY AGAIN', 'g', () => this.on.level(lv, true));
     }
     btn('RECORD', 'b', () => this.record(back)); btn('SETTINGS', kind === 'title' || kind === 'pause' ? 'y' : 'b', () => this.settings(back));
@@ -79,7 +79,7 @@ export const menu = {
   levels(back: () => void) {
     const P = document.createElement('div'); P.className = 'm-panel'; const t = document.createElement('div'); t.className = 'm-title'; t.textContent = 'LEVEL'; P.appendChild(t);
     const row = document.createElement('div'); row.className = 'm-lv'; P.appendChild(row);
-    for (const [n, name, bg] of [[1, 'DAYLIGHT', 'linear-gradient(#8fd8ee,#4f9a2a)'], [2, 'NIGHT', 'linear-gradient(#0b1030,#2b3a86)']] as const) {          // preview = public/art/level<N>.jpg (falls back to the gradient)
+    for (const [n, name, bg] of [[1, 'DAYLIGHT', 'linear-gradient(#8fd8ee,#4f9a2a)'], [2, 'NIGHT', 'linear-gradient(#0b1030,#2b3a86)'], [3, 'SNOW', 'linear-gradient(#c4d3ea,#fbf3f8)']] as const) {          // preview = public/art/level<N>.jpg (falls back to the gradient)
       const locked = n > stats.unlocked, c = document.createElement('button'); c.className = 'm-card' + (n === LEVEL ? ' sel' : '') + (locked ? ' lock' : ''); c.style.background = bg;
       const im = document.createElement('img'); im.src = `art/level${n}.jpg`; im.onerror = () => im.remove(); c.appendChild(im);
       const sp = document.createElement('span'); sp.textContent = locked ? `🔒 LEVEL ${n}` : `LEVEL ${n} · ${name}`; c.appendChild(sp);

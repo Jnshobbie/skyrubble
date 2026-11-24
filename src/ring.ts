@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { NIGHT } from './theme';
+import { MONSTERS } from './theme';
 // Fireball impact animation (level 2): the energy rings from models/anime_vfx.glb. We take the thin ring bands out of that file and play 3 of them, nested and tilted differently,
 // expanding and fading in the fireball's colour (blue for the phantoms). The file's own sphere / column pieces are not used.
 const POOL = 6, LIFE = 0.55, SIZE = 1.6, START = 0.18;                  // simultaneous impacts, seconds, final radius (tiles), starting fraction of it
@@ -10,7 +10,7 @@ type Item = { g: THREE.Group; t: number; bands: { m: THREE.Mesh; mat: THREE.Mesh
 class VfxRing {
   private pool: Item[] = []; private i = 0; ready = false;
   init(scene: THREE.Scene) {
-    if (!NIGHT || this.ready) return;
+    if (!MONSTERS || this.ready) return;
     new GLTFLoader().load('models/anime_vfx.glb', gl => {
       const geos: THREE.BufferGeometry[] = []; gl.scene.traverse(o => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry.computeBoundingBox(); const s = m.geometry.boundingBox!.getSize(new THREE.Vector3()); if (s.y < 0.1 && s.x > 1.9) geos.push(m.geometry); });   // thin unit-radius bands = the rings
       if (!geos.length) return; const h = 0.0125;                          // the bands sit at y = 0.006 .. 0.019: re-centre them

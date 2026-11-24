@@ -8,7 +8,7 @@ import { fx } from './fx';
 import { Dragon3D } from './dragon3d';
 import { Phantom3D } from './phantom3d';
 import { Warrior3D, WARRIOR, WARRIOR_ELITE, type Look } from './warrior3d';
-import { NIGHT } from './theme';
+import { MONSTERS } from './theme';
 const USE3D_ENEMY = new URLSearchParams(location.search).get('enemy') !== '2d'; // 3D is the default; /?enemy=2d falls back to sprites/primitives
 import { ENEMY } from './sprites';
 const mk = (g: THREE.BufferGeometry, c: number, e = 0) => { const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, emissive: e })); m.castShadow = true; return m; };
@@ -61,7 +61,7 @@ export class Dragon {
   // tier = dragon type: 0 green (1 shot), 1 purple (2-shot spread, faster), 2 orange (3-shot spread, fastest, tougher)
   constructor(public scene: THREE.Scene, public bx: number, public by: number, variant = 0) {
     this.x = bx; this.y = by; this.cy = by; this.tier = variant; this.hp = [5, 6, 8][variant] ?? 5;
-    if (USE3D_ENEMY) { this.d3 = NIGHT ? new Phantom3D(scene, variant) : new Dragon3D(scene, variant); return; }   // level 2: blue fire phantoms instead of dragons
+    if (USE3D_ENEMY) { this.d3 = MONSTERS ? new Phantom3D(scene, variant) : new Dragon3D(scene, variant); return; }   // level 2: blue fire phantoms instead of dragons
     this.m.add(mk(new THREE.SphereGeometry(0.7, 10, 8), 0xd6342a, 0x3a0500)); (this.m.children[0] as THREE.Mesh).scale.set(1.5, 0.8, 0.8);
     const head = mk(new THREE.ConeGeometry(0.3, 0.7, 6), 0xff7a2a); head.rotation.z = Math.PI / 2; head.position.x = 1.1; this.m.add(head);
     for (const s of [-1, 1]) { const w = mk(new THREE.BoxGeometry(1.4, 0.06, 0.8), 0x7a1a6a); w.position.set(-0.1, 0.4, s * 0.9); this.wings.push(w); this.m.add(w); }
@@ -181,16 +181,30 @@ export const WARRIOR_ELITE_OPT: FoeOpt = { ...WARRIOR_OPT, warrior: WARRIOR_ELIT
 
 // Spinning saw blade that patrols a short rail (x and/or y range). Not shootable.
 export class Saw {
-  m: THREE.Mesh; t = Math.random() * 6;
+  m: THREE.Mesh; t = Math.random() * 6; vy = 0; falling = false; gone = false; off: number;      // off = saw centre above the surface it stands on
   constructor(scene: THREE.Scene, public x: number, public y: number, public rx = 0, public ry = 0, public speed = 1.3, public r = 0.9) {
+    this.off = rx > 0 ? 0.9 : 0.45;                                                       // 0.45 = half sunk into a platform edge, 0.9 = rolling on a floor
     const map = new THREE.TextureLoader().load('art/saw.png'); map.colorSpace = THREE.SRGBColorSpace;
     this.m = new THREE.Mesh(new THREE.PlaneGeometry(r * 2.2, r * 2.2), new THREE.MeshBasicMaterial({ map, alphaTest: 0.5, color: 0xdddddd }));
     scene.add(this.m);
   }
-  update(dt: number, p: Player) {
-    this.t += dt * this.speed;
-    const x = this.x + Math.sin(this.t) * this.rx, y = this.y + Math.sin(this.t) * this.ry;
-    this.m.position.set(x, y, 0.3); this.m.rotation.z -= dt * 9;
+  /** When the platform under a saw is shot away the saw drops, lands on the floor below and starts rolling back and forth there (gone if there is no floor). */
+  update(dt: number, p: Player, lvl: Level) {
+    if (this.gone) return;
+    const off = this.off;
+    let x = this.x + (this.falling ? 0 : Math.sin((this.t += dt * this.speed)) * this.rx), y = this.y + (this.falling ? 0 : Math.sin(this.t) * this.ry);
+    if (!this.falling && !lvl.solid(Math.floor(x), Math.floor(y - off - 0.05))) { this.falling = true; this.off = 0.9; this.x = x; this.vy = 0; this.rx = 0; this.ry = 0; this.y = y; }   // support is gone
+    if (this.falling) {
+      this.vy = Math.max(this.vy - 30 * dt, -26); this.y += this.vy * dt; x = this.x; y = this.y;
+      const row = Math.floor(y - 0.9 - 0.05);
+      if (this.vy <= 0 && lvl.solid(Math.floor(x), row)) {                              // landed: roll on this floor
+        this.falling = false; this.y = y = row + 1 + 0.9; this.vy = 0; const ix = Math.floor(x); let L = 0, R = 0;
+        while (L < 6 && lvl.solid(ix - L - 1, row) && !lvl.solid(ix - L - 1, row + 1)) L++;
+        while (R < 6 && lvl.solid(ix + R + 1, row) && !lvl.solid(ix + R + 1, row + 1)) R++;
+        this.rx = Math.max(0, Math.min(2.2, Math.min(x - (ix - L), ix + R + 1 - x) - 0.8)); this.t = 0; this.speed = 1.3;   // roll range = the floor that is really there
+      } else if (y < -12) { this.gone = true; this.m.visible = false; return; }
+    }
+    this.m.position.set(x, y, 0.3); this.m.rotation.z -= dt * (this.falling ? 14 : 9);
     if (Math.hypot(p.x - x, p.y + 0.65 - y) < this.r + 0.3) p.hurt(Math.sign(p.x - x) || 1);
   }
 }

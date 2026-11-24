@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeComposer, GRADE } from './grade';
-import { NIGHT, LEVEL, THEME } from './theme';
+import { NIGHT, LEVEL, THEME, SNOW, MONSTERS } from './theme';
+import { Snow } from './snow';
 import { Ambient } from './ambient';
 import { PlantTrap } from './plants';
 import { addDecor } from './decor';
@@ -32,8 +33,8 @@ fx.init(scene);
 function resize() { renderer.setSize(innerWidth, innerHeight); comp.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
-const MAP = buildMap(NIGHT);
-const lvl = new Level(scene, MAP.rects, MAP.len + 10);
+const MAP = buildMap(LEVEL);
+const lvl = new Level(scene, MAP.rects, MAP.len + 10, MAP.maxY); if (MAP.mini) lvl.lock(MAP.mini.gate);          // level 3: the gate after the skeleton's arena stays unbreakable until it falls
 if (NIGHT) addDecor(scene, lvl);
 const player = new Player(scene), bul = new Bullets(scene), hz = new Hazards(scene);
 // Resume from the last checkpoint after a reload / R (kept in sessionStorage). Debug: ?cp=2 starts at checkpoint 2.
@@ -42,14 +43,16 @@ if (qs.has('cp')) sessionStorage.setItem('sky_cp', String(cpIdx));
 let respawn = { x: cpIdx > MAP.checkpoints.length ? MAP.arenaX + 10 : cpIdx > 0 ? MAP.checkpoints[cpIdx - 1] : 2, y: cpIdx > 0 ? 3 : 4 }; player.x = respawn.x; player.y = respawn.y; let camX = player.x, camY = 5;
 // Enemies are created lazily when the player gets within 55 tiles, updated + drawn only within 40 (the world is ~4x bigger now; keeps phones fast).
 type Ent<T extends { alive: boolean }> = { x: number; make: () => T; o?: T };
-const foes: Ent<Soldier>[] = MAP.foes.filter(f => f.x > respawn.x - 20).map(f => ({ x: f.x, make: () => new Soldier(scene, f.x, f.y, Math.max(0.8, f.r), f.elite ? (NIGHT ? WARRIOR_ELITE_OPT : CLUB_ELITE) : (NIGHT ? WARRIOR_OPT : CLUB_OPT)) }));
+const foes: Ent<Soldier>[] = MAP.foes.filter(f => f.x > respawn.x - 20).map(f => ({ x: f.x, make: () => new Soldier(scene, f.x, f.y, Math.max(0.8, f.r), f.elite ? (MONSTERS ? WARRIOR_ELITE_OPT : CLUB_ELITE) : (MONSTERS ? WARRIOR_OPT : CLUB_OPT)) }));
 const dragons: Ent<Dragon>[] = MAP.dragons.filter(d => d.x > respawn.x - 20).map(d => ({ x: d.x, make: () => new Dragon(scene, d.x, d.y, d.v) }));
 const saws = NIGHT ? [] : MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new Saw(scene, w.x, w.y, w.rx));
 const plants = NIGHT ? MAP.saws.filter(w => w.x > respawn.x - 20).map(w => new PlantTrap(scene, w.x, w.y - (w.rx > 0 ? 0.9 : 0.45))) : [];   // level 2: monster plants instead of saws
 const stream = <T extends { alive: boolean }>(list: Ent<T>[], vis: (o: T, on: boolean) => void, step: (o: T) => void) => {
   for (const e of list) { const d = Math.abs(e.x - player.x); if (!e.o && d < 55) e.o = e.make(); if (e.o?.alive) { const on = d < 40; vis(e.o, on); if (on) step(e.o); } }
 };
-const boss: BossLike = NIGHT ? new SkeletonBoss(scene, MAP.bossX, 2, MAP.arenaX) : new Boss3D(scene, MAP.bossX, 2, MAP.arenaX);   // level 1: zeromus; levels 2 and 3: the skeleton with the axe
+const boss: BossLike = LEVEL === 2 ? new SkeletonBoss(scene, MAP.bossX, 2, MAP.arenaX) : new Boss3D(scene, MAP.bossX, 2, MAP.arenaX);   // levels 1 and 3: zeromus; level 2: the skeleton with the axe
+const mini: BossLike | null = MAP.mini ? new SkeletonBoss(scene, MAP.mini.bossX, 2, MAP.mini.arenaX) : null;   // level 3: the skeleton again, as a mini-boss before the last checkpoint
+let miniCine = false, miniOpen = false; const fighting = () => (mini && mini.active && !mini.dead ? mini : boss);   // whose health the boss bar shows
 // checkpoint flags. FLAG_SCALE: 1 = pole 3 tiles tall; 0.6 = 60% size
 const FLAG_SCALE = 0.6;
 const flags = MAP.checkpoints.map((x, i) => { const g = new THREE.Group(), pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3, 6), new THREE.MeshStandardMaterial({ color: 0x4a3a30 })),
@@ -81,8 +84,8 @@ menu.on.pause = () => { if (started && !over && !paused) { paused = true; menu.o
 addEventListener('keydown', e => { if (e.code === 'Escape' || e.code === 'KeyP') { if (menu.isOpen && started && !over) menu.on.resume(); else menu.on.pause(); } });
 addEventListener('blur', () => menu.on.pause());
 addEventListener('pagehide', save);
-if (sessionStorage.getItem('sky_auto')) { sessionStorage.removeItem('sky_auto'); play(); } else menu.open('title', { cp: cpIdx, level: LEVEL });
-const amb = NIGHT ? new Ambient(scene) : null;
+if (sessionStorage.getItem('sky_auto')) { sessionStorage.removeItem('sky_auto'); play(); } else menu.open('title', { cp: cpIdx, level: LEVEL, cps: flags.length });
+const amb = NIGHT ? new Ambient(scene) : null, snow = SNOW ? new Snow(scene, lvl) : null;
 audio.ambient(LEVEL);
 const clock = new THREE.Clock();
 (function loop() {
@@ -96,18 +99,23 @@ const clock = new THREE.Clock();
       for (const e of foes) if (e.o?.alive && e.o.st !== 'dying') t.push({ x: e.o.x, y: e.o.y + 1 });
       for (const e of dragons) if (e.o?.alive && !e.o.dying) t.push({ x: e.o.x, y: e.o.y });
       for (const w of plants) if (w.alive) t.push({ x: w.x, y: w.y + 1.1 });
-      if (boss.active && !boss.dead && boss.st !== 'defeat') t.push(boss.aimPoint());
+      for (const b of [boss, mini]) if (b && b.active && !b.dead && b.st !== 'defeat') t.push(b.aimPoint());
       player.targets = t;
     }
     player.update(dt, lvl, bul); bul.update(dt, lvl);
     stream(foes, (o, on) => { o.spr.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
     stream(dragons, (o, on) => { if (o.d3) o.d3.mesh.visible = on; }, o => { { const g = o.update(dt, player, bul, lvl, hz, scene); score += g; if (g > 0) { stats.kills++; stats.score += g; } } });
-    for (const w of saws) if (Math.abs(w.x - player.x) < 40) w.update(dt, player);
+    for (const w of saws) if (Math.abs(w.x - player.x) < 40) w.update(dt, player, lvl);
     for (const w of plants) { const d = Math.abs(w.x - player.x); w.g.visible = w.alive && d < 45; if (w.alive && d < 40) { const g = w.update(dt, player, bul, lvl); score += g; if (g > 0) { stats.kills++; stats.score += g; } } }
     for (const [i, f] of flags.entries()) if (!f.on && player.x > f.x) { f.on = true; cpIdx = i + 1; stats.cp = Math.max(stats.cp, cpIdx); respawn = { x: f.x, y: 3 }; sessionStorage.setItem('sky_cp', String(cpIdx)); (f.cloth.material as THREE.MeshBasicMaterial).color.set(0x40ff70);
       fx.burst(f.x + 0.6, 4.5, new THREE.Color(0.5, 3, 0.8), 30, 6, 3, 8, 0.9); say(`CHECKPOINT ${cpIdx} / ${flags.length}`); }
     toastT -= dt; if (toastT < 0) toast.style.opacity = '0';
     if (player.ground && lvl.solid(Math.floor(player.x - 0.8), Math.floor(player.y - 0.5)) && lvl.solid(Math.floor(player.x + 0.8), Math.floor(player.y - 0.5)) && player.inv <= 0) safe = { x: player.x, y: player.y + 0.3 };   // last firm footing
+    if (mini && MAP.mini && !mini.active && player.x > MAP.mini.arenaX + 8) { mini.active = true; mini.next(player); $('boss').style.display = 'block'; say('GUARDIAN AHEAD');
+      if (cinOn() && !cine.seen('mini' + LEVEL)) { cine.mark('mini' + LEVEL); cine.play(scenes.bossReveal(LEVEL, player, () => mini.aimPoint(), true), { start: gamePose(), hp: player.hp }); } }
+    if (mini && MAP.mini) { score += mini.update(dt, player, bul, lvl, hz);
+      if (mini.st === 'defeat' && !miniCine) { miniCine = true; if (cinOn()) cine.play(scenes.bossDefeat(LEVEL, () => mini.aimPoint(), true), { start: gamePose(), hp: player.hp }); }
+      if (mini.dead && !miniOpen) { miniOpen = true; lvl.open(MAP.mini.gate); $('boss').style.display = 'none'; say('THE GATE IS OPEN'); audio.sfx('boom', 0.8); fx.shake(0.8); } }
     if (!boss.active && player.x > MAP.arenaX + 8) { boss.active = true; boss.next(player); $('boss').style.display = 'block'; cpIdx = flags.length + 1; respawn = { x: MAP.arenaX + 10, y: 3 }; sessionStorage.setItem('sky_cp', String(cpIdx));
       if (cinOn() && !cine.seen('boss' + LEVEL)) { cine.mark('boss' + LEVEL); cine.play(scenes.bossReveal(LEVEL, player, () => boss.aimPoint()), { start: gamePose(), hp: player.hp }); } }
     score += boss.update(dt, player, bul, lvl, hz);
@@ -115,24 +123,24 @@ const clock = new THREE.Clock();
     if (cine.on) player.hp = Math.max(player.hp, cine.lockHp);                                                                     // hero can't die during a scene
     if (player.y < -8) { player.hp--; player.x = safe.x - Math.sign(player.vx || 1) * 1.2; player.y = safe.y; player.vy = 0; player.inv = 1.2; }     // fell: back to the last firm ground (not the start)
     if (player.hp <= 0) { over = true; stats.deaths++; stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.3; }
-    if (boss.dead) { over = true; stats.wins++; if (LEVEL === 1) stats.unlocked = Math.max(stats.unlocked, 2); stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.8; sessionStorage.removeItem('sky_cp'); }
+    if (boss.dead) { over = true; stats.wins++; if (LEVEL < 3) stats.unlocked = Math.max(stats.unlocked, LEVEL + 1); stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.8; sessionStorage.removeItem('sky_cp'); }
   }
   if (over && player.hp <= 0) player.animOnly(dt, lvl);
   if (over && overT > 0 && (overT -= dt) <= 0) menu.open(player.hp <= 0 ? 'over' : 'win', { score, level: LEVEL });
   if (menu.isOpen) cine.stop();
   ($('hp').firstChild as HTMLElement).style.width = Math.max(0, player.hp / 5 * 100) + '%';
-  ($('boss').firstChild as HTMLElement).style.width = (boss.shieldHp > 0 ? boss.shieldHp / 14 * 50 + 50 : boss.hp / 30 * 50) + '%';
+  { const b = fighting(); ($('boss').firstChild as HTMLElement).style.width = (b.shieldHp > 0 ? b.shieldHp / 14 * 50 + 50 : b.hp / 30 * 50) + '%'; }
   $('score').textContent = String(score);
   if (paused && !started) { camX += (player.x + 6 + Math.sin(performance.now() / 4000) * 3 - camX) * Math.min(1, 1.5 * dt); }   // title: slow drift
   else camX += (player.x + player.face * 2.5 - camX) * Math.min(1, 4 * dt);
-  camY += (Math.max(4.5, player.y + 2.5) - camY) * Math.min(1, 3 * dt);
+  { const ty = Math.max(4.5, player.y + 2.5); camY += (ty - camY) * Math.min(1, (3 + Math.max(0, Math.abs(ty - camY) - 3) * 1.5) * dt); }   // follows faster when far off (level 3 has long drops)
   if (!NIGHT && !over && !paused && !boss.active) { const d = Math.abs(MAP.bossX - player.x); if (d < ROAR_RANGE && (roarT -= dt) <= 0) { audio.sfx('roar', 1, MAP.bossX, ROAR_RANGE); roarT = 5 + d / ROAR_RANGE * 9; } }   // distant roars before the boss fight, more often when closer
   audio.update(dt, menu.isOpen, player.x, !over && !paused && player.ground && Math.abs(player.vx) > 1);
   fx.focusX = player.x; const sh = fx.update(dt);                  // particles + camera shake (offset is added after smoothing so it never feeds back)
   const v = cine.view(gamePose());
   if (v) { cam.position.set(v.x + sh.x, v.y + sh.y, v.z); cam.lookAt(v.lx + sh.x, v.ly + sh.y, 0); }
   else { cam.position.set(camX + sh.x, camY + sh.y, 17); cam.lookAt(camX + sh.x, camY - 0.5 + sh.y, 0); }
-  amb?.update(dt, player.x, player.y, camX, camY);
-  sun.position.set(player.x + 12, 24, 14); sun.target.position.set(player.x, 4, 0);
+  amb?.update(dt, player.x, player.y, camX, camY); snow?.update(dt, camX, camY);
+  { const sy = Math.max(4, camY - 1); sun.position.set(player.x + 12, sy + 20, 14); sun.target.position.set(player.x, sy, 0); }   // the sun (and its shadows) follow the camera up the tiers
   comp.render(dt);
 })();
