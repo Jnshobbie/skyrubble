@@ -2,14 +2,17 @@
 // Usage: audio.sfx('shoot') anywhere; audio.sfx('boom', 0.6, worldX) for positional volume; audio.update(dt, menuOpen, playerX, running) once per frame.
 import { settings } from './menu';
 
-type Name = 'shoot' | 'tail' | 'boom' | 'roar';
-type Clip = { file: string; start: number; dur: number; gap: number; vol: number; rate: number };
+type Name = 'shoot' | 'tail' | 'boom' | 'roar' | 'slam' | 'robotVoice' | 'robotFinal';
+type Clip = { file: string; start: number; dur: number; gap: number; vol: number; rate: number; hold?: number };   // dur 0 = play to the end of the file; hold = fraction of the clip before the fade-out (default 0.7)
 const DIR = 'sound/sound-effets/';
 const CLIPS: Record<Name, Clip> = {                              // start/dur = the part of the file that is used (seconds); gap = min seconds between plays; vol = base volume
   shoot:  { file: 'rifle-shots.mp3',        start: 2.78, dur: 0.16, gap: 0.05, vol: 0.55, rate: 1 },
   boom:   { file: 'fireball-explosion.mp3', start: 6.2,  dur: 1.6,  gap: 0.08, vol: 0.8,  rate: 1 },
   tail:   { file: 'rifle-shots.mp3',        start: 6.6,  dur: 0.55, gap: 0.2,  vol: 0.5,  rate: 1 },      // echo when a machine-gun burst ends
   roar:   { file: 'monster-screaming.mp3',  start: 3.0,  dur: 3.4,  gap: 0.5,  vol: 0.9,  rate: 0.85 },   // the final boss only (roar attack / sound wave)
+  slam:   { file: 'hit-on-grass.mp3',       start: 1.45, dur: 1.1,  gap: 0.15, vol: 0.9,  rate: 1 },      // the axe robot hits the ground
+  robotVoice: { file: 'robot-voice.mp3',    start: 0,    dur: 3.0,  gap: 0,    vol: 0.9,  rate: 1, hold: 0.92 },   // the robot when you lose (one of these two, at random: see audio.lose)
+  robotFinal: { file: 'robot-final.mp3',    start: 0,    dur: 0,    gap: 0,    vol: 0.9,  rate: 1, hold: 0.92 },
 };
 const AUTO = { loopStart: 5.735, loopEnd: 6.47, vol: 0.5, hold: 0.24 };   // machine gun: a seamless 10-shot loop of rifle-shots.mp3 while the fire button is held (hold = seconds without a shot before it ends)
 // level ambience (loops while playing, silent in menus): level 1 = nature, level 2 = foggy night; a level without an entry (level 3 for now) reuses level 2's.
@@ -57,14 +60,16 @@ export const audio = {
   /** x = world position of the sound (quieter + more muffled the further from the hero); range = distance in tiles where it becomes silent */
   sfx(name: Name, vol = 1, x?: number, range = 28) {
     const c = CLIPS[name], b = bufs.get(c.file); if (!ctx || !master || !b || ctx.state !== 'running') return;
-    const now = ctx.currentTime; if (now - (last.get(name) ?? -9) < c.gap) return; last.set(name, now);
+    const now = ctx.currentTime; if (now - (last.get(name) ?? -9) < c.gap) return; last.set(name, now); const len = c.dur || Math.max(0.1, b.duration - c.start);
     let v = c.vol * vol * (settings.sfx ?? 1); const dist = x === undefined ? 0 : Math.abs(x - listenX); v *= Math.max(0, 1 - dist / range);
     if (v < 0.02) return;
-    const rate = c.rate * (1 + (Math.random() - 0.5) * 0.12), real = c.dur / rate, s = ctx.createBufferSource(), g = ctx.createGain();
-    s.buffer = b; s.playbackRate.value = rate; g.gain.setValueAtTime(v, now); g.gain.setValueAtTime(v, now + real * 0.7); g.gain.linearRampToValueAtTime(0.0001, now + real);   // fade the cut end
+    const rate = c.rate * (1 + (Math.random() - 0.5) * 0.12), real = len / rate, s = ctx.createBufferSource(), g = ctx.createGain();
+    s.buffer = b; s.playbackRate.value = rate; g.gain.setValueAtTime(v, now); g.gain.setValueAtTime(v, now + real * (c.hold ?? 0.7)); g.gain.linearRampToValueAtTime(0.0001, now + real);   // fade the cut end
     if (dist > 20) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = Math.max(500, 8000 - (dist - 20) * 70); s.connect(f); f.connect(g); } else s.connect(g);   // far away = muffled
-    g.connect(master); s.start(now, c.start, c.dur);
+    g.connect(master); s.start(now, c.start, len);
   },
+  /** the robot's voice when you lose: robot-voice or robot-final, picked at random (only files that exist and loaded) */
+  lose() { const ok = (['robotVoice', 'robotFinal'] as const).filter(n => bufs.has(CLIPS[n].file)); if (ok.length) this.sfx(ok[Math.floor(Math.random() * ok.length)]); },
   /** one call per bullet: a single shot sounds like one rifle shot; holding the button (3+ shots in a row) switches to a machine-gun loop, released = short echo tail */
   shoot() {
     const b = bufs.get('rifle-shots.mp3'); if (!ctx || !master || !b || ctx.state !== 'running') return;

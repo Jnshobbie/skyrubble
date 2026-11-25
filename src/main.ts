@@ -122,7 +122,7 @@ const clock = new THREE.Clock();
     if (boss.st === 'defeat' && !defeatCine) { defeatCine = true; if (cinOn()) cine.play(scenes.bossDefeat(LEVEL, () => boss.aimPoint()), { start: gamePose(), hp: player.hp }); } hz.update(dt, player, lvl); lvl.update(dt);
     if (cine.on) player.hp = Math.max(player.hp, cine.lockHp);                                                                     // hero can't die during a scene
     if (player.y < -8) { player.hp--; player.x = safe.x - Math.sign(player.vx || 1) * 1.2; player.y = safe.y; player.vy = 0; player.inv = 1.2; }     // fell: back to the last firm ground (not the start)
-    if (player.hp <= 0) { over = true; stats.deaths++; stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.3; }
+    if (player.hp <= 0) { over = true; audio.lose(); stats.deaths++; stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.3; }
     if (boss.dead) { over = true; stats.wins++; if (LEVEL < 3) stats.unlocked = Math.max(stats.unlocked, LEVEL + 1); stats.best = Math.max(stats.best, score); stats.bestDate = new Date().toLocaleDateString(); save(); overT = 1.8; sessionStorage.removeItem('sky_cp'); }
   }
   if (over && player.hp <= 0) player.animOnly(dt, lvl);

@@ -142,7 +142,7 @@ export class SkeletonBoss implements BossLike {
         else this.hp -= n;
     }
     private shock(x: number, dir: number, v: number) { this.hz?.spawn(x, this.y + 0.65, dir * v, 0, 0.55, 1.7, false, WAVE); }
-    private land(x: number, lvl: Level, shake = 0.9) { fx.shake(shake, x); audio.sfx('boom', 1, x); lvl.burst(x, this.y + 0.3, 16); fx.dust(x - 1.5, this.y, -1); fx.dust(x + 1.5, this.y, 1); }
+    private land(x: number, lvl: Level, shake = 0.9) { fx.shake(shake, x); audio.sfx('slam', 1, x); lvl.burst(x, this.y + 0.3, 16); fx.dust(x - 1.5, this.y, -1); fx.dust(x + 1.5, this.y, 1); }
     update(dt: number, p: Player, bul: Bullets, lvl: Level, hz: Hazards) {
         if (!this.active || this.dead) return 0;
         this.hz = hz; this.mesh.visible = true; const sp = this.sp, cfg = ST[this.st]; this.time += dt; this.t += dt * sp; this.flash -= dt;
@@ -174,7 +174,7 @@ export class SkeletonBoss implements BossLike {
         }
         if (this.st === 'sweep') {
             if (!this.hit && clipT > HIT.sweep[0] && clipT < HIT.sweep[1] && d > 0.2 && d < 5 && pf < 1.1) { this.hit = true; p.hurt(dir); }       // low swing: jump over it
-            if (!this.fired && clipT >= 0.95) { this.fired = true; fx.shake(0.45, this.x); audio.sfx('boom', 0.6, this.x); fx.burst(this.x + dir * 3.4, this.y + 1.8, WAVE, 24, 7, 2, 10, 0.5); }
+            if (!this.fired && clipT >= 0.95) { this.fired = true; fx.shake(0.45, this.x); audio.sfx('slam', 0.7, this.x); fx.burst(this.x + dir * 3.4, this.y + 1.8, WAVE, 24, 7, 2, 10, 0.5); }
         }
         if (this.st === 'jump' && !this.fired && clipT >= LEAP[1]) {
             this.fired = true; this.oy = 0; this.land(this.x, lvl, 1.1); this.shock(this.x + dir, dir, 8.5); this.shock(this.x - dir, -dir, 8.5); if (this.phase === 2) { this.shock(this.x + dir, dir, 12); this.shock(this.x - dir, -dir, 12); }

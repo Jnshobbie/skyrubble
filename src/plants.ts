@@ -27,7 +27,7 @@ const halo = () => haloTex ??= (() => {
 })();
 type St = 'idle' | 'attack' | 'recover';
 export class PlantTrap {
-  g = new THREE.Group(); private inner = new THREE.Group(); t = Math.random() * 6; alive = true; hp = HP; st: St = 'idle'; ts = 0; cd = 1 + Math.random(); dir = 1; flash = 0; private yaw = 0;
+  g = new THREE.Group(); private inner = new THREE.Group(); t = Math.random() * 6; alive = true; vy = 0; falling = false; hp = HP; st: St = 'idle'; ts = 0; cd = 1 + Math.random(); dir = 1; flash = 0; private yaw = 0;
   private mixer?: THREE.AnimationMixer; private idle?: THREE.AnimationAction; private base?: THREE.AnimationAction; private atk?: THREE.AnimationAction; private mats: THREE.MeshStandardMaterial[] = [];
   private bones: THREE.Object3D[] = []; private aura: THREE.Mesh; private v = new THREE.Vector3();
   constructor(private scene: THREE.Scene, public x: number, public y: number) {          // y = the platform surface it grows from
@@ -53,6 +53,14 @@ export class PlantTrap {
   /** returns the points earned (when it dies) */
   update(dt: number, p: Player, bul: Bullets, lvl: Level): number {
     if (!this.alive) return 0;
+    // the platform it grows from was shot away: it drops to the floor below and keeps standing there (you can still shoot it); no floor = gone
+    if (!this.falling && !lvl.solid(Math.floor(this.x), Math.floor(this.y - 0.05))) { this.falling = true; this.vy = 0; }
+    if (this.falling) {
+      this.vy = Math.max(this.vy - 30 * dt, -26); this.y += this.vy * dt; const row = Math.floor(this.y - 0.05);
+      if (this.vy <= 0 && lvl.solid(Math.floor(this.x), row)) { this.falling = false; this.y = row + 1; lvl.burst(this.x, this.y + 0.3, 8); fx.shake(0.15, this.x); }
+      else if (this.y < -12) { this.alive = false; this.g.visible = false; return 0; }
+      this.g.position.y = this.y - 0.05;
+    }
     this.t += dt; const dx = p.x - this.x, ady = Math.abs(p.y - this.y); this.mixer?.update(dt);
     const clipT = this.ts * ATK_SPEED, len = this.atk ? this.atk.getClip().duration : 0;                       // where we are inside the attack clip (seconds)
     if (this.st === 'idle') { this.cd -= dt; if (this.cd <= 0 && Math.abs(dx) < REACH && ady < 3.5) { this.dir = Math.sign(dx) || 1; this.startAttack(); } }
